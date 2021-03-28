@@ -1,3 +1,6 @@
+[NB: this is a locally modified plan9ports; nemo].
+
+
 This is a port of many Plan 9 libraries and programs to Unix.
 
 Installation
