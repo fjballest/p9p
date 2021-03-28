@@ -178,3 +178,4 @@ extern	int		shortmenu;
 
 extern	CFsys	*mailfs;
 extern	CFsys	*acmefs;
+

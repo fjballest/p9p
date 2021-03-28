@@ -599,24 +599,78 @@ rpc_resizewindow(Client *c, Rectangle r)
 - (void)rightMouseDragged:(NSEvent*)e{ [self getmouse:e];}
 - (void)rightMouseUp:(NSEvent*)e{ [self getmouse:e];}
 
+static int kbuttons, mbuttons, mscroll;
+NSPoint mpos;
+
 - (void)scrollWheel:(NSEvent*)e
 {
-	NSInteger s;
+	int s;
+	int b;
 
 	s = [e scrollingDeltaY];
-	if(s > 0)
-		[self sendmouse:8];
-	else if (s < 0)
-		[self sendmouse:16];
+	if((short)s==0)
+		return;
+	if(s>0)
+		mscroll = 8;
+	else
+	if(s<0)
+		mscroll = 16;
+	mscroll |= ((short)s)<<1;
+	b = kbuttons | mbuttons | mscroll;
+	[self sendmouse:b];
 }
 
 - (void)keyDown:(NSEvent*)e
 {
+	uint b, code;
 	LOG(@"keyDown to interpret");
 
+	code = [e keyCode];
+	switch (code) {
+	case 0x7a:	// F1
+		kbuttons |= 1;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	case 0x78:	// F2
+		kbuttons |= 2;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	case 0x63:	// F3:
+		kbuttons |= 4;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	}
 	[self interpretKeyEvents:[NSArray arrayWithObject:e]];
 
 	[self resetLastInputRect];
+}
+
+- (void)keyUp:(NSEvent*)e
+{
+	uint code, b;
+	LOG(@"keyUp to interpret");
+
+	code = [e keyCode];
+	switch (code) {
+	case 0x7a:	// F1
+		kbuttons &= ~1;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	case 0x78:	// F2
+		kbuttons &= ~2;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	case 0x63:	// F3:
+		kbuttons &= ~4;
+		b = kbuttons | mbuttons | mscroll;
+		[self sendmouse:b];
+		return;
+	}
 }
 
 - (void)flagsChanged:(NSEvent*)e
@@ -702,6 +756,7 @@ rpc_resizewindow(Client *c, Rectangle r)
 		if(m & NSEventModifierFlagCommand)
 			b = 4;
 	}
+	mbuttons = b;
 	[self sendmouse:b];
 }
 
@@ -712,10 +767,13 @@ rpc_resizewindow(Client *c, Rectangle r)
 	p = [self.window convertPointToBacking:
 		[self.window mouseLocationOutsideOfEventStream]];
 	p.y = Dy(self.client->mouserect) - p.y;
+	b |= kbuttons;
 	// LOG(@"(%g, %g) <- sendmouse(%d)", p.x, p.y, (uint)b);
+	mpos = p;
 	gfx_mousetrack(self.client, p.x, p.y, b, msec());
 	if(b && _lastInputRect.size.width && _lastInputRect.size.height)
 		[self resetLastInputRect];
+	mscroll = 0;
 }
 
 // rpc_setmouse moves the mouse cursor.
@@ -911,7 +969,6 @@ rpc_setmouse(Client *c, Point p)
 	k = keycvt(c);
 	LOG(@"keyDown: character0: 0x%x -> 0x%x", c, k);
 	m = [e modifierFlags];
-
 	if(m & NSEventModifierFlagCommand){
 		if((m & NSEventModifierFlagShift) && 'a' <= k && k <= 'z')
 			k += 'A' - 'a';
