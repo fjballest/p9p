@@ -104,3 +104,4 @@ ctlprint(CFid *fd, char *fmt, ...)
 	if(n <= 0)
 		error("control file write error: %r");
 }
+

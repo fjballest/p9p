@@ -105,7 +105,7 @@ struct Buffer
 };
 void		bufinsert(Buffer*, uint, Rune*, uint);
 void		bufdelete(Buffer*, uint, uint);
-uint		bufload(Buffer*, uint, int, int*, DigestState*);
+uint		bufload(Buffer*, uint, int, int*);
 void		bufread(Buffer*, uint, Rune*, uint);
 void		bufclose(Buffer*);
 void		bufreset(Buffer*);
@@ -135,9 +135,8 @@ struct File
 	Rune		*name;	/* name of associated file */
 	int		nname;	/* size of name */
 	uvlong	qidpath;	/* of file when read */
-	ulong	mtime;	/* of file when read */
+	ulong		mtime;	/* of file when read */
 	int		dev;		/* of file when read */
-	uchar	sha1[20];	/* of file when read */
 	int		unread;	/* file has not been read from disk */
 	int		editclean;	/* mark clean after edit command */
 
@@ -153,7 +152,7 @@ void		fileclose(File*);
 void		filedelete(File*, uint, uint);
 void		filedeltext(File*, Text*);
 void		fileinsert(File*, uint, Rune*, uint);
-uint		fileload(File*, uint, int, int*, DigestState*);
+uint		fileload(File*, uint, int, int*);
 void		filemark(File*);
 void		filereset(File*);
 void		filesetname(File*, Rune*, int);
@@ -219,6 +218,7 @@ void		textredraw(Text*, Rectangle, Font*, Image*, int);
 void		textreset(Text*);
 int		textresize(Text*, Rectangle, int);
 void		textscrdraw(Text*);
+void		xtextscroll(Text*, int);
 void		textscroll(Text*, int);
 void		textselect(Text*);
 int		textselect2(Text*, uint*, uint*, Text**);
@@ -331,6 +331,7 @@ struct Row
 
 void		rowinit(Row*, Rectangle);
 Column*	rowadd(Row*, Column *c, int);
+void	rowsize(Row*);
 void		rowclose(Row*, Column*, int);
 Text*	rowwhich(Row*, Point);
 Column*	rowwhichcol(Row*, Point);
@@ -525,7 +526,6 @@ Image		*button;
 Image		*but2col;
 Image		*but3col;
 Cursor		boxcursor;
-Cursor2		boxcursor2;
 Row			row;
 int			timerpid;
 Disk			*disk;

@@ -10,7 +10,6 @@
 #include <regexp.h>
 #include <9pclient.h>
 #include <plumb.h>
-#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -30,7 +29,7 @@ plumbthread(void *v)
 
 	USED(v);
 	threadsetname("plumbproc");
-
+	
 	/*
 	 * Loop so that if plumber is restarted, acme need not be.
 	 */
@@ -46,7 +45,7 @@ plumbthread(void *v)
 		}
 		plumbeditfid = fid;
 		plumbsendfid = plumbopenfid("send", OWRITE|OCEXEC);
-
+	
 		/*
 		 * Relay messages.
 		 */
@@ -378,7 +377,7 @@ search(Text *ct, Rune *r, uint n)
 int
 isfilec(Rune r)
 {
-	static Rune Lx[] = { '.', '-', '+', '/', ':', '@', 0 };
+	static Rune Lx[] = { '.', '-', '+', '/', ':', '!', 0 };
 	if(isalnum(r))
 		return TRUE;
 	if(runestrchr(Lx, r))
@@ -432,9 +431,9 @@ includename(Text *t, Rune *r, int n)
 	char buf[128];
 	Rune Lsysinclude[] = { '/', 's', 'y', 's', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
 	Rune Lusrinclude[] = { '/', 'u', 's', 'r', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
-	Rune Lusrlocalinclude[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l',
+	Rune Lusrlocalinclude[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l', 
 			'/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
-	Rune Lusrlocalplan9include[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l',
+	Rune Lusrlocalplan9include[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l', 
 			'/', 'p', 'l', 'a', 'n', '9', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
 	Runestr file;
 	int i;
@@ -443,7 +442,7 @@ includename(Text *t, Rune *r, int n)
 		sprint(buf, "/%s/include", objtype);
 		objdir = bytetorune(buf, &i);
 		objdir = runerealloc(objdir, i+1);
-		objdir[i] = '\0';
+		objdir[i] = '\0';	
 	}
 
 	w = t->w;
@@ -477,9 +476,9 @@ includename(Text *t, Rune *r, int n)
 Runestr
 dirname(Text *t, Rune *r, int n)
 {
-	Rune *b;
-	uint nt;
-	int slash, i;
+	Rune *b, c;
+	uint m, nt;
+	int slash;
 	Runestr tmp;
 
 	b = nil;
@@ -490,13 +489,15 @@ dirname(Text *t, Rune *r, int n)
 		goto Rescue;
 	if(n>=1 && r[0]=='/')
 		goto Rescue;
-	b = parsetag(t->w, n, &i);
+	b = runemalloc(nt+n+1);
+	bufread(&t->w->tag.file->b, 0, b, nt);
 	slash = -1;
-	for(i--; i >= 0; i--){
-		if(b[i] == '/'){
-			slash = i;
+	for(m=0; m<nt; m++){
+		c = b[m];
+		if(c == '/')
+			slash = m;
+		if(c==' ' || c=='\t')
 			break;
-		}
 	}
 	if(slash < 0)
 		goto Rescue;
@@ -512,19 +513,6 @@ dirname(Text *t, Rune *r, int n)
 	return tmp;
 }
 
-static int
-texthas(Text *t, uint q0, Rune *r)
-{
-	int i;
-
-	if((int)q0 < 0)
-		return FALSE;
-	for(i=0; r[i]; i++)
-		if(q0+i >= t->file->b.nc || textreadc(t, q0+i) != r[i])
-			return FALSE;
-	return TRUE;
-}
-
 int
 expandfile(Text *t, uint q0, uint q1, Expand *e)
 {
@@ -533,14 +521,12 @@ expandfile(Text *t, uint q0, uint q1, Expand *e)
 	Rune *r, c;
 	Window *w;
 	Runestr rs;
-	Rune Lhttpcss[] = {'h', 't', 't', 'p', ':', '/', '/', 0};
-	Rune Lhttpscss[] = {'h', 't', 't', 'p', 's', ':', '/', '/', 0};
 
 	amax = q1;
 	if(q1 == q0){
 		colon = -1;
 		while(q1<t->file->b.nc && isfilec(c=textreadc(t, q1))){
-			if(c == ':' && !texthas(t, q1-4, Lhttpcss) && !texthas(t, q1-5, Lhttpscss)){
+			if(c == ':'){
 				colon = q1;
 				break;
 			}
@@ -548,7 +534,7 @@ expandfile(Text *t, uint q0, uint q1, Expand *e)
 		}
 		while(q0>0 && (isfilec(c=textreadc(t, q0-1)) || isaddrc(c) || isregexc(c))){
 			q0--;
-			if(colon<0 && c==':' && !texthas(t, q0-4, Lhttpcss) && !texthas(t, q0-5, Lhttpscss))
+			if(colon<0 && c==':')
 				colon = q0;
 		}
 		/*
@@ -578,23 +564,8 @@ expandfile(Text *t, uint q0, uint q1, Expand *e)
 	if(n == 0)
 		return FALSE;
 	/* see if it's a file name */
-	r = runemalloc(n+1);
+	r = runemalloc(n);
 	bufread(&t->file->b, q0, r, n);
-	r[n] = 0;
-	/* is it a URL? look for http:// and https:// prefix */
-	if(runestrncmp(r, Lhttpcss, 7) == 0 || runestrncmp(r, Lhttpscss, 8) == 0){
-		// Avoid capturing end-of-sentence punctuation.
-		if(r[n-1] == '.') {
-			e->q1--;
-			n--;
-		}
-		e->name = r;
-		e->nname = n;
-		e->u.at = t;
-		e->a0 = e->q1;
-		e->a1 = e->q1;
-		return TRUE;
-	}
 	/* first, does it have bad chars? */
 	nname = -1;
 	for(i=0; i<n; i++){
@@ -610,7 +581,7 @@ expandfile(Text *t, uint q0, uint q1, Expand *e)
 	if(nname == -1)
 		nname = n;
 	for(i=0; i<nname; i++)
-		if(!isfilec(r[i]) && r[i] != ' ')
+		if(!isfilec(r[i]))
 			goto Isntfile;
 	/*
 	 * See if it's a file name in <>, and turn that into an include
@@ -756,7 +727,7 @@ openfile(Text *t, Expand *e)
 			/*
 			 * Unrooted path in new window.
 			 * This can happen if we type a pwd-relative path
-			 * in the topmost tag or the column tags.
+			 * in the topmost tag or the column tags.  
 			 * Most of the time plumber takes care of these,
 			 * but plumber might not be running or might not
 			 * be configured to accept plumbed directories.
