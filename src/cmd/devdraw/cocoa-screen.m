@@ -28,31 +28,6 @@
 #include "bigarrow.h"
 #include "glendapng.h"
 
-// Use non-deprecated names.
-#define NSKeyDown NSEventTypeKeyDown
-#define NSShiftKeyMask NSEventModifierFlagShift
-#define NSAlternateKeyMask NSEventModifierFlagOption
-#define NSCommandKeyMask NSEventModifierFlagCommand
-#define NSResizableWindowMask NSWindowStyleMaskResizable
-#define NSLeftMouseDown NSEventTypeLeftMouseDown
-#define NSLeftMouseUp NSEventTypeLeftMouseUp
-#define NSRightMouseDown NSEventTypeRightMouseDown
-#define NSRightMouseUp NSEventTypeRightMouseUp
-#define NSOtherMouseDown NSEventTypeOtherMouseDown
-#define NSOtherMouseUp NSEventTypeOtherMouseUp
-#define NSScrollWheel NSEventTypeScrollWheel
-#define NSMouseMoved NSEventTypeMouseMoved
-#define NSLeftMouseDragged NSEventTypeLeftMouseDragged
-#define NSRightMouseDragged NSEventTypeRightMouseDragged
-#define NSOtherMouseDragged NSEventTypeOtherMouseDragged
-#define NSCompositeCopy NSCompositingOperationCopy
-#define NSCompositeSourceIn NSCompositingOperationSourceIn
-#define NSFlagsChanged NSEventTypeFlagsChanged
-#define NSTitledWindowMask NSWindowStyleMaskTitled
-#define NSClosableWindowMask NSWindowStyleMaskClosable
-#define NSMiniaturizableWindowMask NSWindowStyleMaskMiniaturizable
-#define NSBorderlessWindowMask NSWindowStyleMaskBorderless
-
 AUTOFRAMEWORK(Cocoa)
 
 #define LOG	if(0)NSLog
@@ -64,6 +39,14 @@ int useoldfullscreen = 0;
 int usebigarrow = 0;
 
 static void setprocname(const char*);
+
+static NSString *touchBarCustomizationId = @"org.lsub.customization_id";
+static NSString *touchBarF1Id = @"org.lsub.f1";
+static NSString *touchBarF2Id = @"org.lsub.f2";
+static NSString *touchBarF3Id = @"org.lsub.f3";
+static NSString *touchBarNewColId = @"org.lsub.newcol";
+static NSString *touchBarPutallId = @"org.lsub.putall";
+static NSString *touchBarSizeId = @"org.lsub.size";
 
 /*
  * By default, devdraw uses retina displays.
@@ -78,10 +61,21 @@ usage(void)
 	threadexitsall("usage");
 }
 
-@interface appdelegate : NSObject<NSApplicationDelegate,NSWindowDelegate> @end
+@interface appdelegate : NSObject 
+	- (NSTouchBar *)makeTouchBar;
+	- (NSTouchBarItem *)touchBar:(NSTouchBar *)touchBar
+		makeItemForIdentifier:(NSTouchBarItemIdentifier)identifier;
+	- (void)button1Action:(id)sender;
+	- (void)button2Action:(id)sender;
+	- (void)button3Action:(id)sender;
+	- (void)button4Action:(id)sender;
+	- (void)button5Action:(id)sender;
+	- (void)button6Action:(id)sender;
+@end
 
-NSObject<NSApplicationDelegate,NSWindowDelegate> *myApp;
+static int b1tb, b2tb, b3tb;
 
+static appdelegate *ad;
 void
 threadmain(int argc, char **argv)
 {
@@ -122,10 +116,11 @@ threadmain(int argc, char **argv)
 	if(OSX_VERSION < 100700)
 		[NSAutoreleasePool new];
 
+
+	ad = [appdelegate new];
 	[NSApplication sharedApplication];
 	[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-	myApp = [appdelegate new];
-	[NSApp setDelegate:myApp];
+	[NSApp setDelegate:ad];
 	[NSApp run];
 }
 
@@ -262,6 +257,170 @@ static NSRect dilate(NSRect);
 + (void)callmakewin:(NSValue*)v{ makewin([v pointerValue]);}
 + (void)callsetcursor0:(NSValue*)v{ setcursor0([v pointerValue]);}
 + (void)callkicklabel0:(NSValue*)v{ kicklabel0([v pointerValue]);}
++ (void)callsendmouse:(NSValue*)v{ sendmouse();}
+
+- (NSTouchBar *)makeTouchBar
+{
+	NSTouchBar *touchBar = [[NSTouchBar alloc] init];
+	touchBar.delegate = self;
+	touchBar.customizationIdentifier = touchBarCustomizationId;
+
+	// Set the default ordering of items.
+	touchBar.defaultItemIdentifiers = @[
+		touchBarF1Id,
+		touchBarF2Id,
+		touchBarF3Id,
+		touchBarNewColId,
+		touchBarPutallId,
+		touchBarSizeId,
+		NSTouchBarItemIdentifierOtherItemsProxy];
+	touchBar.customizationAllowedItemIdentifiers = @[
+		touchBarF1Id,
+		touchBarF2Id,
+		touchBarF3Id,
+		touchBarNewColId,
+		touchBarPutallId,
+		touchBarSizeId];
+	touchBar.principalItemIdentifier = touchBarSizeId;
+
+	return touchBar;
+}
+
+- (NSTouchBarItem *)touchBar:(NSTouchBar *)touchBar makeItemForIdentifier:(
+	NSTouchBarItemIdentifier)identifier
+{
+	if ([identifier isEqualToString:touchBarF1Id]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"B1", @"")
+			target:self action:@selector(button1Action:)
+			];
+		[button sendActionOn: NSLeftMouseDownMask | NSLeftMouseUpMask];
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarF1Id];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+	if ([identifier isEqualToString:touchBarF2Id]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"B2", @"")
+			target:self action:@selector(button2Action:)];
+
+		[button sendActionOn: NSLeftMouseDownMask | NSLeftMouseUpMask];
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarF2Id];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+	if ([identifier isEqualToString:touchBarF3Id]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"B3", @"")
+			target:self action:@selector(button3Action:)];
+
+		[button sendActionOn: NSLeftMouseDownMask | NSLeftMouseUpMask];
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarF3Id];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+	if ([identifier isEqualToString:touchBarNewColId]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"Newcol", @"")
+			target:self action:@selector(button4Action:)];
+
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarNewColId];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+	if ([identifier isEqualToString:touchBarPutallId]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"Putall", @"")
+			target:self action:@selector(button5Action:)];
+
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarPutallId];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+	if ([identifier isEqualToString:touchBarSizeId]) {
+		NSButton *button = [NSButton
+			buttonWithTitle:NSLocalizedString(@"Size", @"")
+			target:self action:@selector(button6Action:)];
+
+		NSCustomTouchBarItem* g_TouchBarItem = [[NSCustomTouchBarItem
+			alloc] initWithIdentifier:touchBarSizeId];
+		g_TouchBarItem.view = button;
+		g_TouchBarItem.customizationLabel = NSLocalizedString(
+			@"Truth Button", @"");
+		return g_TouchBarItem;
+	}
+
+	return nil;
+}
+
+- (void)button1Action:(id)sender
+{
+	b1tb = !b1tb;
+	if (b1tb) {
+		in.kbuttons |= 1;
+		NSLog(@"The button 1 was pressed!");
+	} else {
+		in.kbuttons &= ~1;
+		NSLog(@"The button 1 was released!");
+	}
+	sendmouse();
+  }
+
+- (void)button2Action:(id)sender
+{
+	b2tb = !b2tb;
+	if (b2tb) {
+		in.kbuttons |= 2;
+		NSLog(@"The button 2 was pressed!");
+	} else {
+		in.kbuttons &= ~2;
+		NSLog(@"The button 2 was released!");
+	}
+	sendmouse();
+}
+
+- (void)button3Action:(id)sender
+{
+	b3tb = !b3tb;
+	if (b3tb) {
+		in.kbuttons |= 4;
+		NSLog(@"The button 3 was pressed!");
+	} else {
+		in.kbuttons |= 4;
+		NSLog(@"The button 3 was released!");
+	}
+	sendmouse();
+}
+
+- (void)button4Action:(id)sender
+{
+	NSLog(@"The button 4 was pressed!");
+}
+
+- (void)button5Action:(id)sender
+{
+	NSLog(@"The button 5 was pressed!");
+}
+
+- (void)button6Action:(id)sender
+{
+	NSLog(@"The button 6 was pressed!");
+}
 @end
 
 static Memimage* initimg(void);
@@ -387,6 +546,7 @@ makewin(char *s)
 	NSWindow *w;
 	Rectangle wr;
 	int i, set;
+	static NSTouchBar *tb;
 
 	sr = [[NSScreen mainScreen] frame];
 	r = [[NSScreen mainScreen] visibleFrame];
@@ -430,13 +590,17 @@ makewin(char *s)
 		backing:NSBackingStoreBuffered defer:YES];
 	for(i=0; i<2; i++){
 		[win.ofs[i] setAcceptsMouseMovedEvents:YES];
-		[win.ofs[i] setDelegate:myApp];
+		[win.ofs[i] setDelegate:[NSApp delegate]];
 		[win.ofs[i] setDisplaysWhenScreenProfileChanges:NO];
 	}
 	win.isofs = 0;
 	win.content = [contentview new];
 	[WIN setContentView:win.content];
-
+	if (tb == NULL) {
+		tb = [ad makeTouchBar];
+	}
+	win.ofs[0].touchBar = tb;
+	win.ofs[1].touchBar = tb;
 	topwin();
 }
 
@@ -595,7 +759,7 @@ flushimg(NSRect rect)
 	rect = dilate(scalerect(rect, win.topointscale));
 	r.size.height -= Cornersize;
 	dr = NSIntersectionRect(r, rect);
-	LOG(@"r %.0f %.0f %.0f %.0f", r.origin.x, r.origin.y, rect.size.width, rect.size.height);
+	LOG(@"r %.0f %.0f", r.origin.x, r.origin.y, rect.size.width, rect.size.height);
 	LOG(@"rect in points %f %f %.0f %.0f", rect.origin.x, rect.origin.y, rect.size.width, rect.size.height);
 	LOG(@"dr in points %f %f %.0f %.0f", dr.origin.x, dr.origin.y, dr.size.width, dr.size.height);
 	drawimg(dr, NSCompositeCopy);
@@ -796,6 +960,7 @@ static void updatecursor(void);
 - (void)scrollWheel:(NSEvent*)e{ getmouse(e);}
 
 - (void)keyDown:(NSEvent*)e{ getkeyboard(e);}
+- (void)keyUp:(NSEvent*)e{ getkeyboard(e);}
 - (void)flagsChanged:(NSEvent*)e{ getkeyboard(e);}
 
 - (void)magnifyWithEvent:(NSEvent*)e{ getgesture(e);}
@@ -820,52 +985,52 @@ static void updatecursor(void);
 
 static int keycvt[] =
 {
-	[QZ_IBOOK_ENTER]= '\n',
-	[QZ_RETURN]= '\n',
-	[QZ_ESCAPE]= 27,
-	[QZ_BACKSPACE]= '\b',
-	[QZ_LALT]= Kalt,
-	[QZ_LCTRL]= Kctl,
-	[QZ_LSHIFT]= Kshift,
-	[QZ_F1]= KF+1,
-	[QZ_F2]= KF+2,
-	[QZ_F3]= KF+3,
-	[QZ_F4]= KF+4,
-	[QZ_F5]= KF+5,
-	[QZ_F6]= KF+6,
-	[QZ_F7]= KF+7,
-	[QZ_F8]= KF+8,
-	[QZ_F9]= KF+9,
-	[QZ_F10]= KF+10,
-	[QZ_F11]= KF+11,
-	[QZ_F12]= KF+12,
-	[QZ_INSERT]= Kins,
-	[QZ_DELETE]= 0x7F,
-	[QZ_HOME]= Khome,
-	[QZ_END]= Kend,
-	[QZ_KP_PLUS]= '+',
-	[QZ_KP_MINUS]= '-',
-	[QZ_TAB]= '\t',
-	[QZ_PAGEUP]= Kpgup,
-	[QZ_PAGEDOWN]= Kpgdown,
-	[QZ_UP]= Kup,
-	[QZ_DOWN]= Kdown,
-	[QZ_LEFT]= Kleft,
-	[QZ_RIGHT]= Kright,
-	[QZ_KP_MULTIPLY]= '*',
-	[QZ_KP_DIVIDE]= '/',
-	[QZ_KP_ENTER]= '\n',
-	[QZ_KP_PERIOD]= '.',
-	[QZ_KP0]= '0',
-	[QZ_KP1]= '1',
-	[QZ_KP2]= '2',
-	[QZ_KP3]= '3',
-	[QZ_KP4]= '4',
-	[QZ_KP5]= '5',
-	[QZ_KP6]= '6',
-	[QZ_KP7]= '7',
-	[QZ_KP8]= '8',
-	[QZ_KP9]= '9',
+	[QZ_IBOOK_ENTER] '\n',
+	[QZ_RETURN] '\n',
+	[QZ_ESCAPE] 27,
+	[QZ_BACKSPACE] '\b',
+	[QZ_LALT] Kalt,
+	[QZ_LCTRL] Kctl,
+	[QZ_LSHIFT] Kshift,
+	[QZ_F1] KF+1,
+	[QZ_F2] KF+2,
+	[QZ_F3] KF+3,
+	[QZ_F4] KF+4,
+	[QZ_F5] KF+5,
+	[QZ_F6] KF+6,
+	[QZ_F7] KF+7,
+	[QZ_F8] KF+8,
+	[QZ_F9] KF+9,
+	[QZ_F10] KF+10,
+	[QZ_F11] KF+11,
+	[QZ_F12] KF+12,
+	[QZ_INSERT] Kins,
+	[QZ_DELETE] 0x7F,
+	[QZ_HOME] Khome,
+	[QZ_END] Kend,
+	[QZ_KP_PLUS] '+',
+	[QZ_KP_MINUS] '-',
+	[QZ_TAB] '\t',
+	[QZ_PAGEUP] Kpgup,
+	[QZ_PAGEDOWN] Kpgdown,
+	[QZ_UP] Kup,
+	[QZ_DOWN] Kdown,
+	[QZ_LEFT] Kleft,
+	[QZ_RIGHT] Kright,
+	[QZ_KP_MULTIPLY] '*',
+	[QZ_KP_DIVIDE] '/',
+	[QZ_KP_ENTER] '\n',
+	[QZ_KP_PERIOD] '.',
+	[QZ_KP0] '0',
+	[QZ_KP1] '1',
+	[QZ_KP2] '2',
+	[QZ_KP3] '3',
+	[QZ_KP4] '4',
+	[QZ_KP5] '5',
+	[QZ_KP6] '6',
+	[QZ_KP7] '7',
+	[QZ_KP8] '8',
+	[QZ_KP9] '9',
 };
 
 @interface apptext : NSTextView @end
@@ -883,6 +1048,20 @@ interpretdeadkey(NSEvent *e)
 	if(t == nil)
 		t = [apptext new];
 	[t interpretKeyEvents:[NSArray arrayWithObject:e]];
+}
+
+static void
+keyboardmouse(int k, int down)
+{
+	int b;
+
+	getmousepos();
+	b = 1<<(k-1);
+	if(down)
+		in.kbuttons |= b;
+	else
+		in.kbuttons &= ~b;
+	sendmouse();
 }
 
 static void
@@ -904,8 +1083,6 @@ getkeyboard(NSEvent *e)
 		interpretdeadkey(e);
 
 		if(m & NSCommandKeyMask){
-			if((m & NSShiftKeyMask) && 'a' <= c && c <= 'z')
-				c += 'A' - 'a';
 			if(' '<=c && c<='~')
 				keystroke(Kcmd+c);
 			break;
@@ -914,6 +1091,10 @@ getkeyboard(NSEvent *e)
 		code = [e keyCode];
 		if(code<nelem(keycvt) && keycvt[code])
 			k = keycvt[code];
+		if(k >= (KF|1) && k <= (KF|3)){
+			keyboardmouse(k&3, 1);
+			break;
+		}
 		if(k==0)
 			break;
 		if(k>0)
@@ -921,6 +1102,19 @@ getkeyboard(NSEvent *e)
 		else
 			keystroke([s characterAtIndex:0]);
 		break;
+	case NSKeyUp:
+		s = [e characters];
+		c = [s UTF8String][0];
+		k = c;
+		code = [e keyCode];
+		if(code<nelem(keycvt) && keycvt[code])
+			k = keycvt[code];
+		if(k >= (KF|1) && k <= (KF|3)){
+			keyboardmouse(k&3, 0);
+			break;
+		}
+		break;
+
 
 	case NSFlagsChanged:
 		if(in.mbuttons || in.kbuttons){
@@ -1057,11 +1251,14 @@ getmouse(NSEvent *e)
 #else
 		d = [e deltaY];
 #endif
+		if((short)d==0)
+			return;
 		if(d>0)
 			in.mscroll = 8;
 		else
 		if(d<0)
 			in.mscroll = 16;
+		in.mscroll |= ((short)d)<<1;
 		break;
 
 	case NSMouseMoved:
@@ -1168,25 +1365,30 @@ sendmouse(void)
 void
 setmouse(Point p)
 {
+	static int first = 1;
 	NSPoint q;
 	NSRect r;
 
 	if([NSApp isActive]==0 && in.willactivate==0)
 		return;
 
+	if(first){
+		/* Try to move Acme's scrollbars without that! */
+		CGSetLocalEventsSuppressionInterval(0);
+		first = 0;
+	}
 	if([WIN inLiveResize])
 		return;
 
 	in.mpos = scalepoint(NSMakePoint(p.x, p.y), win.topointscale);	// race condition
 
 	q = [win.content convertPoint:in.mpos toView:nil];
-	q = [WIN convertRectToScreen:NSMakeRect(q.x, q.y, 0, 0)].origin;
+	q = [WIN convertBaseToScreen:q];
 
 	r = [[[NSScreen screens] objectAtIndex:0] frame];
 	q.y = r.size.height - q.y;	/* Quartz is top-left-based here */
 
 	CGWarpMouseCursorPosition(NSPointToCGPoint(q));
-	CGAssociateMouseAndMouseCursorPosition(true);
 }
 
 /*
@@ -1456,14 +1658,14 @@ makecursor(Cursor *c)
 		samplesPerPixel:2
 		hasAlpha:YES
 		isPlanar:YES
-		colorSpaceName:NSDeviceWhiteColorSpace
+		colorSpaceName:NSDeviceBlackColorSpace
 		bytesPerRow:2
 		bitsPerPixel:1];
 
 	[r getBitmapDataPlanes:plane];
 
 	for(b=0; b<2*16; b++){
-		plane[0][b] = ~c->set[b];
+		plane[0][b] = c->set[b];
 		plane[1][b] = c->clr[b];
 	}
 	p = NSMakePoint(-c->offset.x, -c->offset.y);

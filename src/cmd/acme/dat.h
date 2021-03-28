@@ -218,6 +218,7 @@ void		textredraw(Text*, Rectangle, Font*, Image*, int);
 void		textreset(Text*);
 int		textresize(Text*, Rectangle, int);
 void		textscrdraw(Text*);
+void		xtextscroll(Text*, int);
 void		textscroll(Text*, int);
 void		textselect(Text*);
 int		textselect2(Text*, uint*, uint*, Text**);
@@ -330,6 +331,7 @@ struct Row
 
 void		rowinit(Row*, Rectangle);
 Column*	rowadd(Row*, Column *c, int);
+void	rowsize(Row*);
 void		rowclose(Row*, Column*, int);
 Text*	rowwhich(Row*, Point);
 Column*	rowwhichcol(Row*, Point);

@@ -238,13 +238,11 @@ threadmain(int argc, char *argv[])
 	if(!loadfile || !rowload(&row, loadfile, TRUE)){
 		rowinit(&row, screen->clipr);
 		if(ncol < 0){
-			if(argc == 0)
+			ncol = Dx(screen->clipr)/(stringwidth(font, "X")*80);
+			if(ncol < 2) {
 				ncol = 2;
-			else{
-				ncol = (argc+(WPERCOL-1))/WPERCOL;
-				if(ncol < 2)
-					ncol = 2;
 			}
+			print("%d %d %d\n", ncol, Dx(screen->clipr), (stringwidth(font, "X")*80));
 		}
 		if(ncol == 0)
 			ncol = 2;
@@ -264,6 +262,7 @@ threadmain(int argc, char *argv[])
 				else
 					readfile(row.col[i/WPERCOL], argv[i]);
 			}
+		rowsize(&row);
 	}
 	flushimage(display, 1);
 
@@ -614,6 +613,13 @@ mousethread(void *v)
 			}
 			/* scroll buttons, wheels, etc. */
 			if(w != nil && (m.buttons & (8|16))){
+				if ((m.buttons >> 2) != 0) {
+					winlock(w, 'M');
+					t->eq0 = ~0;
+					xtextscroll(t, m.buttons>>2);
+					winunlock(w);
+					goto Continue;
+				}
 				if(m.buttons & 8)
 					but = Kscrolloneup;
 				else

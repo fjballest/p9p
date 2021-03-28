@@ -28,27 +28,27 @@ static char *_123 =
 int
 getpts(int fd[], char *slave)
 {
-	char *a, *z;
-	char pty[] = "/dev/ptyXX";
+	char *a;
 
-	for(a=abc; *a; a++)
-	for(z=_123; *z; z++){
-		pty[8] = *a;
-		pty[9] = *z;
-		if((fd[1] = open(pty, ORDWR)) < 0){
-			if(errno == ENOENT)
-				break;
-		}else{
-			fchmod(fd[1], 0620);
-			strcpy(slave, pty);
-			slave[5] = 't';
-			if((fd[0] = open(slave, ORDWR)) >= 0)
-				return 0;
-			close(fd[1]);
-		}
+	fd[1] = posix_openpt(ORDWR);
+	if (fd[1] < 0) {
+		sysfatal("no ptys: open: %r");
 	}
-	sysfatal("no ptys");
-	return 0;
+	a = ptsname(fd[1]);
+	if (a == NULL) {
+		sysfatal("no ptys: ptsname: %r");
+	}
+	if (grantpt(fd[1]) < 0) {
+		sysfatal("no ptys: grantpt: %r");
+	}
+	if (unlockpt(fd[1]) < 0) {
+		sysfatal("no ptys: unlockpt: %r");
+	}
+	strcpy(slave, a);
+	if((fd[0] = open(a, ORDWR)) >= 0)
+		return 0;
+	sysfatal("no ptys: open slave: %r");
+	return -1;
 }
 
 int

@@ -47,6 +47,7 @@ void	xkill(Text*, Text*, Text*, int, int, Rune*, int);
 void	local(Text*, Text*, Text*, int, int, Rune*, int);
 void	look(Text*, Text*, Text*, int, int, Rune*, int);
 void	newcol(Text*, Text*, Text*, int, int, Rune*, int);
+void	xsize(Text*, Text*, Text*, int, int, Rune*, int);
 void	paste(Text*, Text*, Text*, int, int, Rune*, int);
 void	put(Text*, Text*, Text*, int, int, Rune*, int);
 void	putall(Text*, Text*, Text*, int, int, Rune*, int);
@@ -94,6 +95,7 @@ static Rune LSort[] = { 'S', 'o', 'r', 't', 0 };
 static Rune LTab[] = { 'T', 'a', 'b', 0 };
 static Rune LUndo[] = { 'U', 'n', 'd', 'o', 0 };
 static Rune LZerox[] = { 'Z', 'e', 'r', 'o', 'x', 0 };
+static Rune LSize[] = { 'S', 'i', 'z', 'e', 0 };
 
 Exectab exectab[] = {
 	{ LAbort,		doabort,	FALSE,	XXX,		XXX,		},
@@ -115,6 +117,7 @@ Exectab exectab[] = {
 	{ LLook,		look,		FALSE,	XXX,		XXX		},
 	{ LNew,		new,		FALSE,	XXX,		XXX		},
 	{ LNewcol,	newcol,	FALSE,	XXX,		XXX		},
+	{ LSize,	xsize,	FALSE,	XXX,		XXX		},
 	{ LPaste,		paste,	TRUE,	TRUE,	XXX		},
 	{ LPut,		put,		FALSE,	XXX,		XXX		},
 	{ LPutall,		putall,	FALSE,	XXX,		XXX		},
@@ -344,6 +347,19 @@ doabort(Text *__0, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 }
 
 void
+xsize(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
+{
+	USED(_0);
+	USED(_1);
+	USED(_2);
+	USED(_3);
+	USED(_4);
+	USED(_5);
+
+	rowsize(et->row);
+}
+
+void
 newcol(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 {
 	Column *c;
@@ -357,7 +373,8 @@ newcol(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 	USED(_5);
 
 	c = rowadd(et->row, nil, -1);
-	if(c) {
+	rowsize(et->row);
+	if(0 && c) {
 		w = coladd(c, nil, nil, -1);
 		winsettag(w);
 		xfidlog(w, "new");
@@ -369,6 +386,7 @@ delcol(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 {
 	int i;
 	Column *c;
+	Row *r;
 	Window *w;
 
 	USED(_0);
@@ -388,7 +406,9 @@ delcol(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 			return;
 		}
 	}
-	rowclose(et->col->row, et->col, TRUE);
+	r = et->col->row;
+	rowclose(r, et->col, TRUE);
+	rowsize(r);
 }
 
 void
@@ -652,7 +672,7 @@ putfile(File *f, int q0, int q1, Rune *namer, int nname)
 	d = dirstat(name);
 	if(d!=nil && runeeq(namer, nname, f->name, f->nname)){
 		/* f->mtime+1 because when talking over NFS it's often off by a second */
-		if(f->dev!=d->dev || f->qidpath!=d->qid.path || labs((long)(f->mtime-d->mtime)) > 1){
+		if(f->dev!=d->dev || f->qidpath!=d->qid.path || abs(f->mtime-d->mtime) > 1){
 			if(f->unread)
 				warning(nil, "%s not written; file already exists\n", name);
 			else

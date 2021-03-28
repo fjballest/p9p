@@ -373,6 +373,19 @@ winundo(Window *w, int isundo)
 	winsettag(w);
 }
 
+static int
+isplus(Rune *name, int n)
+{
+	int i;
+
+	for(i = n-1; i >= 0; i--)
+		if(name[i] == '+')
+			return 1;
+		else if(name[i] == '/')
+			break;
+	return 0;
+}
+
 void
 winsetname(Window *w, Rune *name, int n)
 {
@@ -380,7 +393,6 @@ winsetname(Window *w, Rune *name, int n)
 	Window *v;
 	int i;
 	static Rune Lslashguide[] = { '/', 'g', 'u', 'i', 'd', 'e', 0 };
-	static Rune Lpluserrors[] = { '+', 'E', 'r', 'r', 'o', 'r', 's', 0 };
 
 	t = &w->body;
 	if(runeeq(t->file->name, t->file->nname, name, n) == TRUE)
@@ -388,7 +400,7 @@ winsetname(Window *w, Rune *name, int n)
 	w->isscratch = FALSE;
 	if(n>=6 && runeeq(Lslashguide, 6, name+(n-6), 6))
 		w->isscratch = TRUE;
-	else if(n>=7 && runeeq(Lpluserrors, 7, name+(n-7), 7))
+	else if(isplus(name, n))
 		w->isscratch = TRUE;
 	filesetname(t->file, name, n);
 	for(i=0; i<t->file->ntext; i++){

@@ -60,8 +60,10 @@ cvttorunes(char *p, int n, Rune *r, int *nb, int *nr, int *nulls)
 		}
 		if(*s)
 			s++;
-		else if(nulls)
+		else if(nulls){
 			*nulls = TRUE;
+			*s++ = '~';
+		}
 	}
 	*nb = (char*)q-p;
 	*nr = s-r;

@@ -7,7 +7,7 @@
 AUTOFRAMEWORK(Foundation)
 AUTOFRAMEWORK(Cocoa)
 
-@interface appdelegate : NSObject<NSApplicationDelegate> @end
+@interface appdelegate : NSObject @end
 
 void
 main(void)
@@ -16,7 +16,7 @@ main(void)
 		[NSAutoreleasePool new];
 
 	[NSApplication sharedApplication];
-	NSObject<NSApplicationDelegate> *delegate = [appdelegate new];
+	NSObject *delegate = [appdelegate new];
 	[NSApp setDelegate:delegate];
 
 	NSAppleEventManager *appleEventManager = [NSAppleEventManager sharedAppleEventManager];    /* Register a call-back for URL Events */

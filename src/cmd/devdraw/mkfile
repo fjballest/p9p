@@ -38,7 +38,7 @@ $O.macargv: $MACARGV
 %-objc.$O: %.m
 	$CC $CFLAGS -o $target $stem.m
 
-CLEANFILES=$O.macargv $O.mklatinkbd latin1.h
+CLEANFILES=$O.macargv $O.mklatinkbd $O.devdraw latin1.h
 
 install: mklatinkbd.install
 install:Q: 
