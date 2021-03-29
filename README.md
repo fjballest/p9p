@@ -1,4 +1,16 @@
-[NB: this is a locally modified plan9ports; nemo].
+[NB: 
+	this is a locally modified plan9ports
+	changes acme and devdraw to
+	- use accel srolling with the wheel. Nice w/ apple mouse.
+	- use F1/F2/F3 as mouse B1/B2/B3. I map left ctrl,cmd,option to those.
+	- add a Size cmd for acme to resize columns.
+	- make all windows with names starting with "+" be considered temp.
+
+	I'd just clone the actual p9p from its site and then
+	simply add the changes found here in ./src/cmd/{acme, devdraw}.
+
+	HTH. -nemo
+].
 
 
 This is a port of many Plan 9 libraries and programs to Unix.
