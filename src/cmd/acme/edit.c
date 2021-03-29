@@ -8,6 +8,7 @@
 #include <frame.h>
 #include <fcall.h>
 #include <plumb.h>
+#include <libsec.h>
 #include "dat.h"
 #include "edit.h"
 #include "fns.h"
@@ -634,7 +635,9 @@ simpleaddr(void)
 		case '.':
 		case '$':
 		case '\'':
-			if(addr.type!='"')
+			if(addr.type=='"')
+				break;
+			/* fall through */
 		case '"':
 				editerror("bad address syntax");
 			break;

@@ -604,8 +604,7 @@ NSPoint mpos;
 
 - (void)scrollWheel:(NSEvent*)e
 {
-	int s;
-	int b;
+	int s, b;
 
 	s = [e scrollingDeltaY];
 	if((short)s==0)
@@ -623,8 +622,8 @@ NSPoint mpos;
 - (void)keyDown:(NSEvent*)e
 {
 	uint b, code;
-	LOG(@"keyDown to interpret");
 
+	LOG(@"keyDown to mouse or interpret");
 	code = [e keyCode];
 	switch (code) {
 	case 0x7a:	// F1
@@ -651,8 +650,8 @@ NSPoint mpos;
 - (void)keyUp:(NSEvent*)e
 {
 	uint code, b;
-	LOG(@"keyUp to interpret");
 
+	LOG(@"keyUp to mouse");
 	code = [e keyCode];
 	switch (code) {
 	case 0x7a:	// F1

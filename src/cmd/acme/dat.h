@@ -137,6 +137,7 @@ struct File
 	uvlong	qidpath;	/* of file when read */
 	ulong		mtime;	/* of file when read */
 	int		dev;		/* of file when read */
+	uchar	sha1[20];	/* of file when read */
 	int		unread;	/* file has not been read from disk */
 	int		editclean;	/* mark clean after edit command */
 
@@ -152,7 +153,7 @@ void		fileclose(File*);
 void		filedelete(File*, uint, uint);
 void		filedeltext(File*, Text*);
 void		fileinsert(File*, uint, Rune*, uint);
-uint		fileload(File*, uint, int, int*);
+uint		fileload(File*, uint, int, int*, DigestState*);
 void		filemark(File*);
 void		filereset(File*);
 void		filesetname(File*, Rune*, int);
@@ -526,6 +527,7 @@ Image		*button;
 Image		*but2col;
 Image		*but3col;
 Cursor		boxcursor;
+Cursor2		boxcursor2;
 Row			row;
 int			timerpid;
 Disk			*disk;

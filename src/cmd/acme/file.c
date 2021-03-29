@@ -8,6 +8,7 @@
 #include <frame.h>
 #include <fcall.h>
 #include <plumb.h>
+#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -163,10 +164,11 @@ fileunsetname(File *f, Buffer *delta)
 }
 
 uint
-fileload(File *f, uint p0, int fd, int *nulls)
+fileload(File *f, uint p0, int fd, int *nulls, DigestState *h)
 {
 	if(f->seq > 0)
 		error("undo in file.load unimplemented");
+	USED(h);
 	return bufload(&f->b, p0, fd, nulls);
 }
 

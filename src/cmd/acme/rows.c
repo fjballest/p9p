@@ -9,6 +9,7 @@
 #include <fcall.h>
 #include <bio.h>
 #include <plumb.h>
+#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -176,7 +177,7 @@ rowdragcol(Row *row, Column *c, int _0)
 	USED(_0);
 
 	clearmouse();
-	setcursor(mousectl, &boxcursor);
+	setcursor2(mousectl, &boxcursor, &boxcursor2);
 	b = mouse->buttons;
 	op = mouse->xy;
 	while(mouse->buttons == b)
@@ -344,7 +345,7 @@ rowclean(Row *row)
 void
 rowdump(Row *row, char *file)
 {
-	int i, j, fd, m, n, dumped;
+	int i, j, fd, m, n, start, dumped;
 	uint q0, q1;
 	Biobuf *b;
 	char *buf, *a, *fontname;
@@ -462,9 +463,17 @@ rowdump(Row *row, char *file)
 			m = min(RBUFSIZE, w->tag.file->b.nc);
 			bufread(&w->tag.file->b, 0, r, m);
 			n = 0;
-			while(n<m && r[n]!='\n')
-				n++;
-			Bprint(b, "%.*S\n", n, r);
+			while(n<m) {
+				start = n;
+				while(n<m && r[n]!='\n')
+					n++;
+				Bprint(b, "%.*S", n-start, r+start);
+				if(n<m) {
+					Bputc(b, 0xff); // \n in tag becomes 0xff byte (invalid UTF)
+					n++;
+				}
+			}
+			Bprint(b, "\n");
 			if(dumped){
 				q0 = 0;
 				q1 = t->file->b.nc;
@@ -641,6 +650,7 @@ rowload(Row *row, char *file, int initing)
 			}
 			textdelete(&row->col[i]->tag, 0, row->col[i]->tag.file->b.nc, TRUE);
 			textinsert(&row->col[i]->tag, 0, r+n+1, nr-(n+1), TRUE);
+			free(r);
 			break;
 		case 'w':
 			l[Blinelen(b)-1] = 0;
@@ -654,6 +664,7 @@ rowload(Row *row, char *file, int initing)
 			}
 			textdelete(&row->tag, 0, row->tag.file->b.nc, TRUE);
 			textinsert(&row->tag, 0, r, nr, TRUE);
+			free(r);
 			break;
 		default:
 			done = 1;
@@ -745,6 +756,10 @@ rowload(Row *row, char *file, int initing)
 		if(l == nil)
 			goto Rescue2;
 		l[Blinelen(b)-1] = 0;
+		/* convert 0xff in multiline tag back to \n */
+		for(i = 0; l[i] != 0; i++)
+			if((uchar)l[i] == 0xff)
+				l[i] = '\n';
 		r = bytetorune(l+5*12, &nr);
 		ns = -1;
 		for(n=0; n<nr; n++){

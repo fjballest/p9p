@@ -641,4 +641,3 @@ mainctl(void *v)
 		}
 	}
 }
-

@@ -8,6 +8,7 @@
 #include <frame.h>
 #include <fcall.h>
 #include <plumb.h>
+#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -60,10 +61,8 @@ cvttorunes(char *p, int n, Rune *r, int *nb, int *nr, int *nulls)
 		}
 		if(*s)
 			s++;
-		else if(nulls){
+		else if(nulls)
 			*nulls = TRUE;
-			*s++ = '~';
-		}
 	}
 	*nb = (char*)q-p;
 	*nr = s-r;
@@ -277,6 +276,8 @@ runeeq(Rune *s1, uint n1, Rune *s2, uint n2)
 {
 	if(n1 != n2)
 		return FALSE;
+	if(n1 == 0)
+		return TRUE;
 	return memcmp(s1, s2, n1*sizeof(Rune)) == 0;
 }
 

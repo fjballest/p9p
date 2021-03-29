@@ -8,6 +8,7 @@
 #include <frame.h>
 #include <fcall.h>
 #include <plumb.h>
+#include <libsec.h>
 #include "dat.h"
 #include "fns.h"
 
@@ -109,18 +110,15 @@ windrawbutton(Window *w)
 int
 delrunepos(Window *w)
 {
-	int n;
-	Rune rune;
-	
-	for(n=0; n<w->tag.file->b.nc; n++) {
-		bufread(&w->tag.file->b, n, &rune, 1);
-		if(rune == ' ')
-			break;
-	}
-	n += 2;
-	if(n >= w->tag.file->b.nc)
+	Rune *r;
+	int i;
+
+	r = parsetag(w, 0, &i);
+	free(r);
+	i += 2;
+	if(i >= w->tag.file->b.nc)
 		return -1;
-	return n;
+	return i;
 }
 
 void
@@ -430,11 +428,7 @@ wincleartag(Window *w)
 
 	/* w must be committed */
 	n = w->tag.file->b.nc;
-	r = runemalloc(n);
-	bufread(&w->tag.file->b, 0, r, n);
-	for(i=0; i<n; i++)
-		if(r[i]==' ' || r[i]=='\t')
-			break;
+	r = parsetag(w, 0, &i);
 	for(; i<n; i++)
 		if(r[i] == '|')
 			break;
@@ -449,6 +443,38 @@ wincleartag(Window *w)
 	if(w->tag.q1 > i)
 		w->tag.q1 = i;
 	textsetselect(&w->tag, w->tag.q0, w->tag.q1);
+}
+
+Rune*
+parsetag(Window *w, int extra, int *len)
+{
+	static Rune Ldelsnarf[] = { ' ', 'D', 'e', 'l', ' ', 'S', 'n', 'a', 'r', 'f', 0 };
+	static Rune Lspacepipe[] = { ' ', '|', 0 };
+	static Rune Ltabpipe[] = { '\t', '|', 0 };
+	int i;
+	Rune *r, *p, *pipe;
+
+	r = runemalloc(w->tag.file->b.nc+extra+1);
+	bufread(&w->tag.file->b, 0, r, w->tag.file->b.nc);
+	r[w->tag.file->b.nc] = '\0';
+
+	/*
+	 * " |" or "\t|" ends left half of tag
+	 * If we find " Del Snarf" in the left half of the tag
+	 * (before the pipe), that ends the file name.
+	 */
+	pipe = runestrstr(r, Lspacepipe);
+	if((p = runestrstr(r, Ltabpipe)) != nil && (pipe == nil || p < pipe))
+		pipe = p;
+	if((p = runestrstr(r, Ldelsnarf)) != nil && (pipe == nil || p < pipe))
+		i = p - r;
+	else {
+		for(i=0; i<w->tag.file->b.nc; i++)
+			if(r[i]==' ' || r[i]=='\t')
+				break;
+	}
+	*len = i;
+	return r;
 }
 
 void
@@ -469,12 +495,7 @@ winsettag1(Window *w)
 	/* there are races that get us here with stuff in the tag cache, so we take extra care to sync it */
 	if(w->tag.ncache!=0 || w->tag.file->mod)
 		wincommit(w, &w->tag);	/* check file name; also guarantees we can modify tag contents */
-	old = runemalloc(w->tag.file->b.nc+1);
-	bufread(&w->tag.file->b, 0, old, w->tag.file->b.nc);
-	old[w->tag.file->b.nc] = '\0';
-	for(i=0; i<w->tag.file->b.nc; i++)
-		if(old[i]==' ' || old[i]=='\t')
-			break;
+	old = parsetag(w, 0, &i);
 	if(runeeq(old, i, w->body.file->name, w->body.file->nname) == FALSE){
 		textdelete(&w->tag, 0, i, TRUE);
 		textinsert(&w->tag, 0, w->body.file->name, w->body.file->nname, TRUE);
@@ -487,7 +508,8 @@ winsettag1(Window *w)
 	/* compute the text for the whole tag, replacing current only if it differs */
 	new = runemalloc(w->body.file->nname+100);
 	i = 0;
-	runemove(new+i, w->body.file->name, w->body.file->nname);
+	if(w->body.file->nname != 0)
+		runemove(new, w->body.file->name, w->body.file->nname);
 	i += w->body.file->nname;
 	runemove(new+i, Ldelsnarf, 10);
 	i += 10;
@@ -594,11 +616,7 @@ wincommit(Window *w, Text *t)
 			textcommit(f->text[i], FALSE);	/* no-op for t */
 	if(t->what == Body)
 		return;
-	r = runemalloc(w->tag.file->b.nc);
-	bufread(&w->tag.file->b, 0, r, w->tag.file->b.nc);
-	for(i=0; i<w->tag.file->b.nc; i++)
-		if(r[i]==' ' || r[i]=='\t')
-			break;
+	r = parsetag(w, 0, &i);
 	if(runeeq(r, i, w->body.file->name, w->body.file->nname) == FALSE){
 		seq++;
 		filemark(w->body.file);

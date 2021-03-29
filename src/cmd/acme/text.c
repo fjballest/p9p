@@ -8,6 +8,7 @@
 #include <frame.h>
 #include <fcall.h>
 #include <plumb.h>
+#include <libsec.h>
 #include <complete.h>
 #include "dat.h"
 #include "fns.h"
@@ -198,6 +199,7 @@ textload(Text *t, uint q0, char *file, int setqid)
 	Dir *d, *dbuf;
 	char *tmp;
 	Text *u;
+	DigestState *h;
 
 	if(t->ncache!=0 || t->file->b.nc || t->w==nil || t!=&t->w->body)
 		error("text.load");
@@ -220,6 +222,7 @@ textload(Text *t, uint q0, char *file, int setqid)
 		goto Rescue;
 	}
 	nulls = FALSE;
+	h = nil;
 	if(d->qid.type & QTDIR){
 		/* this is checked in get() but it's possible the file changed underfoot */
 		if(t->file->ntext > 1){
@@ -264,9 +267,17 @@ textload(Text *t, uint q0, char *file, int setqid)
 	}else{
 		t->w->isdir = FALSE;
 		t->w->filemenu = TRUE;
-		q1 = q0 + fileload(t->file, q0, fd, &nulls);
+		if(q0 == 0)
+			h = sha1(nil, 0, nil, nil);
+		q1 = q0 + fileload(t->file, q0, fd, &nulls, h);
 	}
 	if(setqid){
+		if(h != nil) {
+			sha1(nil, 0, t->file->sha1, h);
+			h = nil;
+		} else {
+			memset(t->file->sha1, 0, sizeof t->file->sha1);
+		}
 		t->file->dev = d->dev;
 		t->file->mtime = d->mtime;
 		t->file->qidpath = d->qid.path;
@@ -756,6 +767,10 @@ texttype(Text *t, Rune r)
 	case Kcmd+'z':	/* %Z: undo */
 	 	typecommit(t);
 		undo(t, nil, nil, TRUE, 0, nil, 0);
+		return;
+	case Kcmd+'Z':	/* %-shift-Z: redo */
+	 	typecommit(t);
+		undo(t, nil, nil, FALSE, 0, nil, 0);
 		return;
 
 	Tagdown:
@@ -1600,7 +1615,7 @@ textsetorigin(Text *t, uint org, int exact)
 	Rune *r;
 	uint n;
 
-	if(org>0 && !exact){
+	if(org>0 && !exact && textreadc(t, org-1) != '\n'){
 		/* org is an estimate of the char posn; find a newline */
 		/* don't try harder than 256 chars */
 		for(i=0; i<256 && org<t->file->b.nc; i++){
