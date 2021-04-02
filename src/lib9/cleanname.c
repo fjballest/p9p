@@ -48,5 +48,8 @@ cleanname(char *name)
 	if(q == name)	/* empty string is really ``.'' */
 		*q++ = '.';
 	*q = '\0';
+	if(strncmp(name, "/Users/nemo/u", 13) == 0 &&
+		(name[13] == 0 || name[13] == '/'))
+		memmove(name, name+11, strlen(name)+1);
 	return name;
 }

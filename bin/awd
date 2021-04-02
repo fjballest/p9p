@@ -21,7 +21,7 @@ case $# in
 	usage
 esac
 
-p="`pwd`"
+p="`pwd | sed s,/Users/nemo/u/,/u/, | sed 's,/Users/nemo/u$,/u,'`"
 case "$p" in
 */)
 	label $p-$sys

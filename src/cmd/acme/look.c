@@ -30,7 +30,7 @@ plumbthread(void *v)
 
 	USED(v);
 	threadsetname("plumbproc");
-	
+
 	/*
 	 * Loop so that if plumber is restarted, acme need not be.
 	 */
@@ -46,7 +46,7 @@ plumbthread(void *v)
 		}
 		plumbeditfid = fid;
 		plumbsendfid = plumbopenfid("send", OWRITE|OCEXEC);
-	
+
 		/*
 		 * Relay messages.
 		 */
@@ -432,9 +432,9 @@ includename(Text *t, Rune *r, int n)
 	char buf[128];
 	Rune Lsysinclude[] = { '/', 's', 'y', 's', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
 	Rune Lusrinclude[] = { '/', 'u', 's', 'r', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
-	Rune Lusrlocalinclude[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l', 
+	Rune Lusrlocalinclude[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l',
 			'/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
-	Rune Lusrlocalplan9include[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l', 
+	Rune Lusrlocalplan9include[] = { '/', 'u', 's', 'r', '/', 'l', 'o', 'c', 'a', 'l',
 			'/', 'p', 'l', 'a', 'n', '9', '/', 'i', 'n', 'c', 'l', 'u', 'd', 'e', 0 };
 	Runestr file;
 	int i;
@@ -443,7 +443,7 @@ includename(Text *t, Rune *r, int n)
 		sprint(buf, "/%s/include", objtype);
 		objdir = bytetorune(buf, &i);
 		objdir = runerealloc(objdir, i+1);
-		objdir[i] = '\0';	
+		objdir[i] = '\0';
 	}
 
 	w = t->w;
@@ -756,7 +756,7 @@ openfile(Text *t, Expand *e)
 			/*
 			 * Unrooted path in new window.
 			 * This can happen if we type a pwd-relative path
-			 * in the topmost tag or the column tags.  
+			 * in the topmost tag or the column tags.
 			 * Most of the time plumber takes care of these,
 			 * but plumber might not be running or might not
 			 * be configured to accept plumbed directories.
