@@ -41,6 +41,7 @@ void	edit(Text*, Text*, Text*, int, int, Rune*, int);
 void	xexit(Text*, Text*, Text*, int, int, Rune*, int);
 void	fontx(Text*, Text*, Text*, int, int, Rune*, int);
 void	get(Text*, Text*, Text*, int, int, Rune*, int);
+void	getall(Text*, Text*, Text*, int, int, Rune*, int);
 void	id(Text*, Text*, Text*, int, int, Rune*, int);
 void	incl(Text*, Text*, Text*, int, int, Rune*, int);
 void	indent(Text*, Text*, Text*, int, int, Rune*, int);
@@ -77,6 +78,7 @@ static Rune LEdit[] = { 'E', 'd', 'i', 't', 0 };
 static Rune LExit[] = { 'E', 'x', 'i', 't', 0 };
 static Rune LFont[] = { 'F', 'o', 'n', 't', 0 };
 static Rune LGet[] = { 'G', 'e', 't', 0 };
+static Rune LGetall[] = { 'G', 'e', 't', 'a', 'l', 'l', 0 };
 static Rune LID[] = { 'I', 'D', 0 };
 static Rune LIncl[] = { 'I', 'n', 'c', 'l', 0 };
 static Rune LIndent[] = { 'I', 'n', 'd', 'e', 'n', 't', 0 };
@@ -109,6 +111,7 @@ Exectab exectab[] = {
 	{ LExit,		xexit,	FALSE,	XXX,		XXX		},
 	{ LFont,		fontx,	FALSE,	XXX,		XXX		},
 	{ LGet,		get,		FALSE,	TRUE,	XXX		},
+	{ LGetall,	getall,		FALSE,	XXX,	XXX		},
 	{ LID,		id,		FALSE,	XXX,		XXX		},
 	{ LIncl,		incl,		FALSE,	XXX,		XXX		},
 	{ LIndent,		indent,	FALSE,	XXX,		XXX		},
@@ -195,7 +198,7 @@ execute(Text *t, uint aq0, uint aq1, int external, Text *argt)
 			f |= 2;
 		}
 		aa = getbytearg(argt, TRUE, TRUE, &a);
-		if(a){	
+		if(a){
 			if(strlen(a) > EVENTSIZE){	/* too big; too bad */
 				free(r);
 				free(aa);
@@ -1219,6 +1222,40 @@ putall(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
 	}
 }
 
+void
+getall(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
+{
+	int i, j, e;
+	Window *w;
+	Column *c;
+	char *a;
+
+	USED(et);
+	USED(_0);
+	USED(_1);
+	USED(_2);
+	USED(_3);
+	USED(_4);
+	USED(_5);
+
+	for(i=0; i<row.ncol; i++){
+		c = row.col[i];
+		for(j=0; j<c->nw; j++){
+			w = c->w[j];
+			if(w->isscratch || w->body.file->nname==0)
+				continue;
+			if(w->nopen[QWevent] > 0)
+				continue;
+			a = runetobyte(w->body.file->name, w->body.file->nname);
+			e = access(a, R_OK);
+			if(e < 0)
+				warning(nil, "can't Get %s: %r\n", a);
+			else
+				get(&w->body, nil, nil, XXX, XXX, nil, 0);
+			free(a);
+		}
+	}
+}
 
 void
 id(Text *et, Text *_0, Text *_1, int _2, int _3, Rune *_4, int _5)
