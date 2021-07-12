@@ -141,6 +141,10 @@ rxinit(void)
 void
 regerror(char *e)
 {
+	if(rechan == nil){
+		fprint(2, "regerror: %s\n", e);
+		return;
+	}
 	lastregexp[0] = 0;
 	warning(nil, "regexp: %s\n", e);
 	sendp(rechan, nil);

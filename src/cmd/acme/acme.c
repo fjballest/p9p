@@ -9,6 +9,7 @@
 #include <fcall.h>
 #include <plumb.h>
 #include <libsec.h>
+#include <regexp.h>
 #include "dat.h"
 #include "fns.h"
 	/* for generating syms in mkfile only: */
@@ -49,6 +50,8 @@ void	shutdownthread(void*);
 void	acmeerrorinit(void);
 void	readfile(Column*, char*);
 static int	shutdown(void*, char*);
+
+void acmetags(void);
 
 void
 derror(Display *d, char *errorstr)
@@ -144,6 +147,7 @@ threadmain(int argc, char *argv[])
 	}
 	if(maxtab == 0)
 		maxtab = 4;
+	acmetags();
 	if(loadfile)
 		rowloadfonts(loadfile);
 	putenv("font", fontnames[0]);
@@ -1049,7 +1053,7 @@ iconinit(void)
 		tagcols[BORD] = allocimage(display, Rect(0,0,1,1), screen->chan, 1, DPurpleblue);
 		tagcols[TEXT] = display->black;
 		tagcols[HTEXT] = display->black;
-	
+
 		/* Yellow */
 		textcols[BACK] = allocimagemix(display, DPaleyellow, DWhite);
 		textcols[HIGH] = allocimage(display, Rect(0,0,1,1), screen->chan, 1, DDarkyellow);
@@ -1057,7 +1061,7 @@ iconinit(void)
 		textcols[TEXT] = display->black;
 		textcols[HTEXT] = display->black;
 	}
-	
+
 	r = Rect(0, 0, Scrollwid+ButtonBorder, font->height+1);
 	if(button && eqrect(r, button->r))
 		return;
@@ -1170,4 +1174,56 @@ timefmt(Fmt *f)
 	tm = localtime(va_arg(f->args, ulong));
 	return fmtprint(f, "%04d/%02d/%02d %02d:%02d:%02d",
 		tm->year+1900, tm->mon+1, tm->mday, tm->hour, tm->min, tm->sec);
+}
+
+static ATag *atags;
+
+void
+acmetags(void)
+{
+	ATag *atag, **atagl;
+	char *e, *s, *t, *p;
+	Rune *rp;
+	int w;
+
+	e = getenv("acmetags");
+	if(e == nil)
+		return;
+	atagl = &atags;
+	for(s = e; s && *s; s = p){
+		t = strchr(s,' ');
+		if(t == nil)
+			break;
+		*t++ = 0;
+		p = strchr(t, '\n');
+		if(p == nil || *t == 0)
+			break;
+		*p++ = 0;
+		atag = emalloc(sizeof *atag);
+		atag->p = regcomp(s);
+		if(atag->p == nil)
+			break;
+		atag->ntag = utflen(t);
+		atag->tag = emalloc(atag->ntag * sizeof(Rune));
+		rp = atag->tag;
+		for(;*t;t+=w)
+			w = chartorune(rp++,t);
+		*atagl = atag;
+		atagl = &atag->next;
+	}
+	free(e);
+}
+
+ATag*
+winacmetag(Rune *name)
+{
+	ATag *atag;
+	Resub m;
+
+	for(atag = atags; atag; atag = atag->next){
+		memset(&m, 0, sizeof m);
+		if(rregexec(atag->p, name, &m, 1)==1)
+			break;
+	}
+	return atag;
 }

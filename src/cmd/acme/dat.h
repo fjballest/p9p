@@ -34,6 +34,8 @@ enum
 };
 
 #define Buffer AcmeBuffer
+typedef	struct	ATag ATag;
+typedef struct	Reprog Reprog;
 typedef	struct	Block Block;
 typedef	struct	Buffer Buffer;
 typedef	struct	Command Command;
@@ -508,6 +510,14 @@ enum	/* editing */
 	Inactive	= 0,
 	Inserting,
 	Collecting
+};
+
+struct ATag
+{
+	ATag	*next;
+	Reprog	*p;
+	int		ntag;
+	Rune	*tag;
 };
 
 uint		globalincref;

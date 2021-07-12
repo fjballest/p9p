@@ -625,6 +625,7 @@ NSPoint mpos;
 
 	LOG(@"keyDown to mouse or interpret");
 	code = [e keyCode];
+	if(0)
 	switch (code) {
 	case 0x7a:	// F1
 		kbuttons |= 1;
@@ -647,12 +648,14 @@ NSPoint mpos;
 	[self resetLastInputRect];
 }
 
+#ifdef NOTDEF
 - (void)keyUp:(NSEvent*)e
 {
 	uint code, b;
 
 	LOG(@"keyUp to mouse");
 	code = [e keyCode];
+	if(0)
 	switch (code) {
 	case 0x7a:	// F1
 		kbuttons &= ~1;
@@ -671,6 +674,7 @@ NSPoint mpos;
 		return;
 	}
 }
+#endif
 
 - (void)flagsChanged:(NSEvent*)e
 {
@@ -755,7 +759,7 @@ NSPoint mpos;
 		if(m & NSEventModifierFlagCommand)
 			b = 4;
 	}
-	mbuttons = b;
+	if(0)mbuttons = b;
 	[self sendmouse:b];
 }
 
@@ -766,13 +770,13 @@ NSPoint mpos;
 	p = [self.window convertPointToBacking:
 		[self.window mouseLocationOutsideOfEventStream]];
 	p.y = Dy(self.client->mouserect) - p.y;
-	b |= kbuttons;
+	if(0) b |= kbuttons;
 	// LOG(@"(%g, %g) <- sendmouse(%d)", p.x, p.y, (uint)b);
-	mpos = p;
+	if(0)mpos = p;
 	gfx_mousetrack(self.client, p.x, p.y, b, msec());
 	if(b && _lastInputRect.size.width && _lastInputRect.size.height)
 		[self resetLastInputRect];
-	mscroll = 0;
+	if(0)mscroll = 0;
 }
 
 // rpc_setmouse moves the mouse cursor.
