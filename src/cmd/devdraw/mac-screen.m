@@ -599,15 +599,23 @@ rpc_resizewindow(Client *c, Rectangle r)
 - (void)rightMouseDragged:(NSEvent*)e{ [self getmouse:e];}
 - (void)rightMouseUp:(NSEvent*)e{ [self getmouse:e];}
 
+static int mscroll;
 - (void)scrollWheel:(NSEvent*)e
 {
 	NSInteger s;
 
 	s = [e scrollingDeltaY];
-	if(s > 0)
-		[self sendmouse:8];
-	else if (s < 0)
-		[self sendmouse:16];
+	if((short)s==0)
+		return;
+	if(s>0)
+		mscroll = 8;
+	else
+	if(s<0)
+		mscroll = 16;
+	int v = ((short)s)<<1;
+	v &= ~(8|16);
+	mscroll |= v;
+	[self sendmouse:mscroll];
 }
 
 - (void)keyDown:(NSEvent*)e

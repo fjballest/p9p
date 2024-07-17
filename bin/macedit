@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PLAN9=${PLAN9:-/usr/local/plan9}
+PLAN9=${PLAN9:-/u/plan9}
 bin=$PLAN9/bin
 
 file=$1

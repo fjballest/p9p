@@ -220,6 +220,7 @@ void		textreset(Text*);
 int		textresize(Text*, Rectangle, int);
 void		textscrdraw(Text*);
 void		textscroll(Text*, int);
+void		xtextscroll(Text*, int);
 void		textselect(Text*);
 int		textselect2(Text*, uint*, uint*, Text**);
 int		textselect23(Text*, uint*, uint*, Image*, int);
@@ -238,6 +239,7 @@ struct Window
 	Rectangle	r;
 	uchar	isdir;
 	uchar	isscratch;
+	uchar	isout;
 	uchar	filemenu;
 	uchar	dirty;
 	uchar	autoindent;
@@ -331,6 +333,7 @@ struct Row
 
 void		rowinit(Row*, Rectangle);
 Column*	rowadd(Row*, Column *c, int);
+void	rowsize(Row*);
 void		rowclose(Row*, Column*, int);
 Text*	rowwhich(Row*, Point);
 Column*	rowwhichcol(Row*, Point);
