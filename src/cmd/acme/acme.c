@@ -615,6 +615,13 @@ mousethread(void *v)
 			}
 			/* scroll buttons, wheels, etc. */
 			if(w != nil && (m.buttons & (8|16))){
+				if (1) {
+					winlock(w, 'M');
+					t->eq0 = ~0;
+					xtextscroll(t, m.buttons/4);
+					winunlock(w);
+					goto Continue;
+				}
 				if(m.buttons & 8)
 					but = Kscrolloneup;
 				else
