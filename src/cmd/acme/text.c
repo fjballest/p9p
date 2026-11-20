@@ -891,7 +891,7 @@ texttype(Text *t, Rune r)
 		if(t->w->autoindent){
 			/* find beginning of previous line using backspace code */
 			nnb = textbswidth(t, 0x15); /* ^U case */
-			rp = runemalloc(nnb + 1);
+			rp = runemalloc(nnb + 2);
 			nr = 0;
 			rp[nr++] = r;
 			for(i=0; i<nnb; i++){
@@ -899,6 +899,12 @@ texttype(Text *t, Rune r)
 				if(r != ' ' && r != '\t')
 					break;
 				rp[nr++] = r;
+			}
+			// one more after '{' if using tabs
+			if(t->q0>0 && nnb>0 && rp[nr-1]=='\t') {
+				r = textreadc(t, t->q0-1);
+				if(r == '{')
+					rp[nr++] = '\t';
 			}
 		}
 		break; /* fall through to normal code */
