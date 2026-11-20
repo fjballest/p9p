@@ -482,9 +482,12 @@ parsetag(Window *w, int extra, int *len)
 	return r;
 }
 
+extern ATag *winacmetag(Rune*);
+
 void
 winsettag1(Window *w)
 {
+	ATag *atag;
 	int i, j, k, n, bar, dirty, resize;
 	Rune *new, *old, *r;
 	uint q0, q1;
@@ -516,6 +519,11 @@ winsettag1(Window *w)
 	if(w->body.file->nname != 0)
 		runemove(new, w->body.file->name, w->body.file->nname);
 	i += w->body.file->nname;
+	atag = nil;
+	if(w->body.file->nname != 0){
+		new[i] = 0;
+		atag = winacmetag(new);
+	}
 	runemove(new+i, Ldelsnarf, 10);
 	i += 10;
 	if(w->filemenu){
@@ -545,8 +553,13 @@ winsettag1(Window *w)
 	else{
 		k = w->tag.file->b.nc;
 		if(w->body.file->seq == 0){
-			runemove(new+i, Llook, 6);
-			i += 6;
+			if(atag){
+				runemove(new+i, atag->tag, atag->ntag);
+				i += atag->ntag;
+			}else{
+				runemove(new+i, Llook, 6);
+				i += 6;
+			}
 		}
 	}
 	new[i] = 0;
