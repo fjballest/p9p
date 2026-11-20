@@ -239,6 +239,7 @@ struct Window
 	Rectangle	r;
 	uchar	isdir;
 	uchar	isscratch;
+	uchar	isout;
 	uchar	filemenu;
 	uchar	dirty;
 	uchar	autoindent;
