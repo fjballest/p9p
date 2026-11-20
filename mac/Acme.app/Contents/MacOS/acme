@@ -8,10 +8,17 @@
 # shown in the menu. $HOME/lib/acmeapp/env, if present, is read
 # before any profile and is the place for PATH and the like.
 
-PLAN9=${PLAN9:-/usr/local/plan9}
-export PLAN9
 app=$(cd "$(dirname "$0")/.." && pwd)
+log=/tmp/acmeapp.$(id -un).log
+exec 2>>"$log"
+# The app lives in $PLAN9/mac/Acme.app; prefer that over the
+# path INSTALL writes here, so it works before INSTALL is rerun.
+PLAN9=${PLAN9:-/usr/local/plan9}
+p9=$(cd "$app/../../.." && pwd)
+[ -x "$p9/bin/acme" ] && PLAN9=$p9
+export PLAN9
 dir=$HOME/lib/acmeapp
+echo "$(date): Acme.app PLAN9=$PLAN9" >&2
 
 if [ ! -d "$dir" ]; then
 	mkdir -p "$dir"
@@ -20,6 +27,7 @@ fi
 
 profiles=$(cd "$dir" && ls | grep -v -e '^env$' -e '\.' -e '~$')
 if [ -z "$profiles" ]; then
+	echo "no profiles in $dir" >&2
 	osascript -e "display alert \"Acme\" message \"No profiles in $dir\"" >/dev/null
 	exit 1
 fi
@@ -31,9 +39,12 @@ else
 	echo "$profiles" | grep -qx "$last" || last=main
 	echo "$profiles" | grep -qx "$last" || last=$(echo "$profiles" | sed 1q)
 	list=$(echo "$profiles" | sed 's/.*/"&"/' | paste -sd, -)
-	name=$(osascript \
-		-e "choose from list {$list} with title \"Acme\" with prompt \"Start which acme?\" default items {\"$last\"}" \
-		2>/dev/null)
+	ask="choose from list {$list} with title \"Acme\" with prompt \"Start which acme?\" default items {\"$last\"}"
+	name=$(osascript -e "$ask")
+	if [ $? -ne 0 ]; then
+		# no UI for this process; ask System Events to show it
+		name=$(osascript -e "tell application \"System Events\"" -e activate -e "$ask" -e "end tell")
+	fi
 	case "$name" in
 	""|false)
 		exit 0
@@ -41,5 +52,6 @@ else
 	echo "$name" >"$dir/.last"
 fi
 
-"$app/Resources/start" "$name" </dev/null >>/tmp/acmeapp.$USER.log 2>&1 &
+echo "starting $name" >&2
+"$app/Resources/start" "$name" </dev/null >>"$log" 2>&1 &
 exit 0
