@@ -239,12 +239,9 @@ threadmain(int argc, char *argv[])
 	if(!loadfile || !rowload(&row, loadfile, TRUE)){
 		rowinit(&row, screen->clipr);
 		if(ncol < 0){
-			if(argc == 0)
+			ncol = Dx(screen->clipr)/(stringwidth(font, "X")*80);
+			if(ncol < 2) {
 				ncol = 2;
-			else{
-				ncol = (argc+(WPERCOL-1))/WPERCOL;
-				if(ncol < 2)
-					ncol = 2;
 			}
 		}
 		if(ncol == 0)
@@ -265,6 +262,7 @@ threadmain(int argc, char *argv[])
 				else
 					readfile(row.col[i/WPERCOL], argv[i]);
 			}
+		rowsize(&row);
 	}
 	flushimage(display, 1);
 

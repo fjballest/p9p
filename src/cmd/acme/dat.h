@@ -331,6 +331,7 @@ struct Row
 
 void		rowinit(Row*, Rectangle);
 Column*	rowadd(Row*, Column *c, int);
+void	rowsize(Row*);
 void		rowclose(Row*, Column*, int);
 Text*	rowwhich(Row*, Point);
 Column*	rowwhichcol(Row*, Point);
