@@ -1,0 +1,45 @@
+#!/bin/sh
+# Acme.app: ask which kind of acme to start, then start it
+# in its own namespace with its own dump file.
+#
+# Each kind is a profile, a small sh file in $HOME/lib/acmeapp
+# (see Contents/Resources/profiles for examples; they are copied
+# there the first time the app runs). The file name is the name
+# shown in the menu. $HOME/lib/acmeapp/env, if present, is read
+# before any profile and is the place for PATH and the like.
+
+PLAN9=${PLAN9:-/usr/local/plan9}
+export PLAN9
+app=$(cd "$(dirname "$0")/.." && pwd)
+dir=$HOME/lib/acmeapp
+
+if [ ! -d "$dir" ]; then
+	mkdir -p "$dir"
+	cp "$app/Resources/profiles/"* "$dir/"
+fi
+
+profiles=$(cd "$dir" && ls | grep -v -e '^env$' -e '\.' -e '~$')
+if [ -z "$profiles" ]; then
+	osascript -e "display alert \"Acme\" message \"No profiles in $dir\"" >/dev/null
+	exit 1
+fi
+
+if [ $(echo "$profiles" | wc -l) -eq 1 ]; then
+	name=$profiles
+else
+	last=$(cat "$dir/.last" 2>/dev/null)
+	echo "$profiles" | grep -qx "$last" || last=main
+	echo "$profiles" | grep -qx "$last" || last=$(echo "$profiles" | sed 1q)
+	list=$(echo "$profiles" | sed 's/.*/"&"/' | paste -sd, -)
+	name=$(osascript \
+		-e "choose from list {$list} with title \"Acme\" with prompt \"Start which acme?\" default items {\"$last\"}" \
+		2>/dev/null)
+	case "$name" in
+	""|false)
+		exit 0
+	esac
+	echo "$name" >"$dir/.last"
+fi
+
+"$app/Resources/start" "$name" </dev/null >>/tmp/acmeapp.$USER.log 2>&1 &
+exit 0

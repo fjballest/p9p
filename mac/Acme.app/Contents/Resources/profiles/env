@@ -1,0 +1,6 @@
+# Read before any profile. Finder starts apps with a minimal PATH;
+# set the one acme and its commands should see.
+PATH=/opt/local/bin:/opt/local/sbin:/u/rcbin:/u/bin:$HOME/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Library/TeX/texbin:/opt/ImageMagick/bin:$PLAN9/bin
+JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-11.0.17.jdk/Contents/Home
+PATH=$JAVA_HOME/bin:$PATH
+export JAVA_HOME

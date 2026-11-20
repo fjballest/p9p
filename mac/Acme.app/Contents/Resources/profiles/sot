@@ -1,0 +1,3 @@
+# Lectures: small window, large font (like Sot).
+# NAMESPACE and DUMP default to /tmp/$USER.ns.sot and $HOME/acme.dump.sot
+font=/mnt/font/Consolas-Bold/18a/font
