@@ -502,6 +502,8 @@ rowdump(Row *row, char *file)
 		return;
 	tmp = nil;
 	buf = nil;
+	if(file == nil)
+		file = dumpfile;
 	if(file == nil){
 		if(home == nil){
 			warning(nil, "can't find file for dump: $home not defined\n");
@@ -599,6 +601,8 @@ rowload(Row *row, char *file, int initing)
 	Window *w;
 
 	buf = fbufalloc();
+	if(file == nil)
+		file = dumpfile;
 	if(file == nil){
 		if(home == nil){
 			warning(nil, "can't find file for load: $home not defined\n");

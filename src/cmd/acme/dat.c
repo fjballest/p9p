@@ -40,6 +40,7 @@ int			fsyspid;
 char			*cputype;
 char			*objtype;
 char			*acmeshell;
+char			*dumpfile;
 //char			*fontnames[2];
 extern char		wdir[]; /* must use extern because no dimension given */
 int			globalautoindent;
