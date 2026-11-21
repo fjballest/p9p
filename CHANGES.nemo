@@ -98,7 +98,12 @@ macme, apdf, aimg (new, prototype)
 	Zoom-, Zoom!), and aweb shows web pages rendered by a
 	headless Chrome (clicks follow links; Links, Back,
 	Reload, More, Zoom+, Zoom-). Horizontal swipes scroll images sideways.
-	See macme(1).
+	The ctl message place moves a window to a column and height.
+	apascdb runs pascdb (the stepper of the pasc Pascal
+	compiler) with each view in its own window: source with
+	breakpoints, data, stack, memory, input files, and output
+	(typing gives input); Pict shows a view as pascdb's page
+	draws it, with a headless Chrome. See macme(1).
 
 mac/Acme.app (new)
 	Double-click to choose which acme to start, each with its

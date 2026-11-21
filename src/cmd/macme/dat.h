@@ -363,6 +363,7 @@ void		rowdump(Row*, char*);
 int		rowload(Row*, char*, int);
 void		rowloadfonts(char*);
 void		rowplace(Window*);
+char*		rowmove(Window*, int, double);
 
 struct Timer
 {
