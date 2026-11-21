@@ -4,7 +4,11 @@
  * when the file is closed, the body shows it.  Scrolling
  * works as usual, and clicks on the image are sent to the
  * event file as "MI x y buttons 0 " (x and y in the image).
- * The ctl message noimage goes back to text.
+ * The ctl message noimage goes back to text, and pagekeys
+ * makes PgUp, PgDn, Home and End come as "KX" events for
+ * pgup, pgdown, home and end instead of scrolling.
+ * Reading the image file gives the size of the panel and of
+ * the image, to fit the image to the panel.
  * nemo
  */
 #include <u.h>
@@ -158,11 +162,31 @@ imgmouse(Window *w, Mouse *m)
 	waitup();
 }
 
+// send a page key to the client as if name was executed
+static int
+imgkey(Window *w, char *name)
+{
+	w->owner = 'K';
+	winevent(w, "X0 0 0 %d %s\n", utflen(name), name);
+	return 1;
+}
+
 int
 imgtype(Window *w, Rune r)
 {
 	int h, page;
 
+	if(w->pagekeys)
+		switch(r){
+		case Kpgup:
+			return imgkey(w, "pgup");
+		case Kpgdown:
+			return imgkey(w, "pgdown");
+		case Khome:
+			return imgkey(w, "home");
+		case Kend:
+			return imgkey(w, "end");
+		}
 	h = w->body.fr.font->height;
 	page = Dy(imgrect(w)) - h;
 	switch(r){
@@ -244,4 +268,21 @@ imgfree(Window *w)
 	free(w->imgbuf);
 	w->imgbuf = nil;
 	w->nimgbuf = 0;
+	w->pagekeys = FALSE;
+}
+
+// panel and image sizes, for the image file
+void
+imgsize(Window *w, char *buf)
+{
+	Rectangle r;
+	int dx, dy;
+
+	r = imgrect(w);
+	dx = dy = 0;
+	if(w->img != nil){
+		dx = Dx(w->img->r);
+		dy = Dy(w->img->r);
+	}
+	sprint(buf, "%11d %11d %11d %11d ", Dx(r), Dy(r), dx, dy);
 }

@@ -38,15 +38,29 @@ too, so
 and other clients work unchanged), is the same as in
 .IR acme .
 .PP
-Each window directory has a write-only file
+Each window directory has a file
 .BR image .
 An
 .IR image (6),
 compressed or not, written to it is shown in the body
 when the file is closed, replacing any previous one.
+Reading it gives four numbers: the width and height of the
+part of the body that shows the image, and those of the image,
+so that clients can fit the image to the window.
 The ctl message
 .B noimage
 goes back to showing text.
+The ctl message
+.B pagekeys
+makes the PgUp, PgDn, Home and End keys come as
+.B KX
+events, as if
+.BR pgup ,
+.BR pgdown ,
+.B home
+or
+.B end
+had been executed, instead of scrolling.
 .PP
 The wheel, the scroll bar, and the arrow, page, Home and End keys
 scroll the image; typing does not change it.
@@ -76,18 +90,29 @@ or
 whichever is found, and
 .IR png (1)
 to make the image.
-.BR Next ,
-.BR Prev ,
-.BR Zoom+
+.B Next
+and
+.B Prev
+in the tag, or the PgDn and PgUp keys, move through the pages;
+Home and End go to the first and last ones.
+.B Zoom+
 and
 .B Zoom-
-in the tag move through the pages and change their size.
+change their size, and
+.B Zoom!
+fits the page to the window.
 .PP
 .I Aimg
 shows an image file (PNG, JPEG and GIF with the
 .IR jpg (1)
 programs, others with ImageMagick's
-.IR convert ).
+.IR convert ),
+with the same
+.BR Zoom+ ,
+.B Zoom-
+and
+.B Zoom!
+in the tag.
 .PP
 Both write
 .B dumpdir
@@ -103,7 +128,8 @@ and
 .B Load
 (or a restart with
 .BR -l )
-bring their windows back as they were.
+bring their windows back as they were, in the same
+column and place.
 Other clients should do the same, as
 .I win
 does.
@@ -131,3 +157,10 @@ plot ... | topng | png -t | winwrite image
 .SH BUGS
 It is a prototype: the image is kept in memory, the body text
 is hidden but kept, and there is no way to zoom in macme itself.
+.I Apdf
+needs
+.IR pdfinfo ,
+.IR mutool ,
+or
+.I gs
+to find the last page for End.

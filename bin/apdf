@@ -1,6 +1,8 @@
 #!/usr/local/plan9/bin/rc
 # apdf [-r dpi] file [page] - show a PDF in a macme window, a page at a time.
-# Next, Prev and Zoom+ and Zoom- in the tag move and scale the pages.
+# Next and Prev in the tag (or PgDn and PgUp, Home and End) move
+# through the pages; Zoom+ and Zoom- scale them, and Zoom! fits the
+# page to the window.
 # Pages are rendered with mutool, pdftoppm, or gs, whichever is found.
 . $PLAN9/lib/acme.rc
 ifs=' 	
@@ -30,6 +32,26 @@ tmp=/tmp/apdf.$pid
 
 fn has {
 	~ `{ls $path^/$1 >[2]/dev/null} ?*
+}
+
+# number of pages, if it can be found
+fn npages {
+	if(has pdfinfo)
+		pdfinfo $f >[2]/dev/null | awk '/^Pages:/{print $2}'
+	if not if(has mutool)
+		mutool info $f >[2]/dev/null | awk '/^Pages:/{print $2}'
+	if not if(has gs)
+		gs -q -dNODISPLAY -dNOSAFER -dBATCH -dNOPAUSE \
+			-c '('$f') (r) file runpdfbegin pdfpagecount = quit' >[2]/dev/null
+}
+
+# scale factor to fit the image in the window
+fn fit {
+	winread image | awk '{
+		if($3 <= 0 || $4 <= 0){ print 1; exit }
+		x = $1/$3; y = $2/$4
+		print (x < y) ? x : y
+	}'
 }
 
 # show $page at $res; fails if there is no such page
@@ -63,21 +85,40 @@ fn event {
 	switch($2){
 	case x X
 		switch($9){
-		case Next
+		case Next pgdown
 			page=`{expr $page + 1}
 			if(! render)
 				page=`{expr $page - 1}
-		case Prev
+		case Prev pgup
 			if(! ~ $page 1){
 				page=`{expr $page - 1}
+				render
+			}
+		case home
+			if(! ~ $page 1){
+				page=1
+				render
+			}
+		case end
+			n=`{npages}
+			if(~ $n [0-9]* && ! ~ $n $page){
+				page=$n
 				render
 			}
 		case Zoom+
 			res=`{expr $res '*' 5 / 4}
 			render
 		case Zoom-
-			res=`{expr $res '*' 4 / 5}
-			render
+			if(! ~ $res [0-9] 1[0-9]){
+				res=`{expr $res '*' 4 / 5}
+				render
+			}
+		case Zoom!
+			r=`{fit | awk '{r = int('$res' * $1); print (r < 10) ? 10 : r}'}
+			if(! ~ $r $res){
+				res=$r
+				render
+			}
 		case *
 			winwriteevent $*
 		}
@@ -91,7 +132,8 @@ fn event {
 newwindow
 winname $f
 winctl dumpdir /
-echo -n ' Next Prev Zoom+ Zoom- ' | winwrite tag
+winctl pagekeys
+echo -n ' Next Prev Zoom+ Zoom- Zoom! ' | winwrite tag
 winctl clean
 if(! render){
 	echo apdf: $f: no page $page >[1=2]
