@@ -10,6 +10,13 @@
 #	The cookies are saved back to the file. The final URL (after
 #	redirects) is printed on standard output.
 #
+# awebcdp -S sock [-c cookies]
+#	keeps a Chrome running and serves render requests on the
+#	unix socket sock, until the process that started it is gone.
+#	With -C sock, the first form asks that server to render, which
+#	saves starting Chrome each time; without a server it does
+#	the work itself.
+#
 # awebcdp -l [-c cookies] url
 #	opens url in a Chrome window, so the user may log in;
 #	the cookies are saved to the file until Chrome is quit.
@@ -25,14 +32,49 @@ use Fcntl qw(F_SETFD);
 use File::Temp qw(tempdir);
 use MIME::Base64;
 use Getopt::Std;
+use Time::HiRes qw(time stat);
+use IO::Socket::UNIX;
 
 my %o;
-getopts('lc:s:w:W:H:o:b:', \%o) && @ARGV == 1 or die
-	"usage: awebcdp [-l] [-c cookies] [-s scale] [-w ms] [-W width -H height -o png -b boxes] url\n";
+my $usage = "usage: awebcdp [-l] [-C sock] [-c cookies] [-s scale] [-w ms] [-W width -H height -o png -b boxes] url\n" .
+	"	awebcdp -S sock [-c cookies]\n";
+getopts('lc:s:w:W:H:o:b:S:C:', \%o) or die $usage;
+my $serve = $o{S};
+die $usage unless $serve ? @ARGV == 0 : @ARGV == 1;
 my $url = $ARGV[0];
 my $login = $o{l};
-my $wait = $o{w} || 15000;
 my $json = JSON::PP->new->utf8->canonical;
+
+# the request, as given in the options
+sub request {
+	defined $o{$_} or die "awebcdp: -$_ needed\n" for qw(W H o b);
+	return { url => $url, W => $o{W}, H => $o{H}, s => $o{s} || 1,
+		w => $o{w} || 15000, o => $o{o}, b => $o{b} };
+}
+
+# ask the server, if there is one; it answers the final url
+if($o{C} && !$login && !$serve){
+	my $req = request();
+	my $c = IO::Socket::UNIX->new(Type => SOCK_STREAM, Peer => $o{C});
+	if($c){
+		local $SIG{ALRM} = sub { die "timeout\n" };
+		alarm(60);
+		my $a = eval {
+			print $c $json->encode($req), "\n";
+			$c->flush;
+			my $l = <$c>;
+			$l ? $json->decode($l) : undef;
+		};
+		alarm(0);
+		if($a && !$a->{error}){
+			binmode(STDOUT, ':utf8');
+			print "$a->{url}\n";
+			exit 0;
+		}
+		warn "awebcdp: server: $a->{error}\n" if $a && $a->{error};
+	}
+	# no server: do it here
+}
 
 sub chromepath {
 	return $ENV{AWEBCHROME} if $ENV{AWEBCHROME};
@@ -191,11 +233,83 @@ sub quit {
 	kill('KILL', $pid) if waitpid($pid, WNOHANG) == 0;
 }
 
+my $js = <<'EOF';
+(function(){
+	var o = [];
+	document.querySelectorAll("a[href], area[href]").forEach(function(a){
+		var rs = a.getClientRects(), shown = 0;
+		for(var i = 0; i < rs.length; i++){
+			var r = rs[i];
+			if(r.width > 0 && r.height > 0){
+				o.push([Math.round(r.left+scrollX), Math.round(r.top+scrollY),
+					Math.round(r.right+scrollX), Math.round(r.bottom+scrollY), a.href].join(" "));
+				shown = 1;
+			}
+		}
+		if(!shown)
+			o.push(["0 0 0 0", a.href].join(" "));
+	});
+	return location.href + "\n" + o.join("\n") + "\n";
+})()
+EOF
+
+# render a request in the page of session $s; returns the final url
+my $cookietime = 0;
+sub render {
+	my ($s, $q) = @_;
+	@events = ();
+	# cookies saved by someone else (a login) since we last looked
+	if($o{c} && -e $o{c} && ((stat($o{c}))[9] // 0) != $cookietime){
+		my $c = loadcookies();
+		call(undef, 'Storage.setCookies', { cookies => $c }) if @$c;
+	}
+	call($s, 'Emulation.setDeviceMetricsOverride', {
+		width => int($q->{W}), height => int($q->{H}),
+		deviceScaleFactor => $q->{s} + 0, mobile => JSON::PP::false });
+	my $nav = call($s, 'Page.navigate', { url => $q->{url} });
+	warn "awebcdp: $q->{url}: $nav->{errorText}\n" if $nav->{errorText};
+	# a new document (not a #fragment in the same one): wait for
+	# it, but pages that take long to load are shown as they are
+	# after the wait
+	event($s, 'Page.loadEventFired', $q->{w}/1000) if $nav->{loaderId};
+	select(undef, undef, undef, 0.2);
+
+	my $r = call($s, 'Runtime.evaluate', { expression => $js, returnByValue => JSON::PP::true });
+	my $v = $r->{result}{value} // "$q->{url}\n";
+	my ($final, $boxes) = split(/\n/, $v, 2);
+	open(my $bf, '>', $q->{b}) or die "awebcdp: $q->{b}: $!\n";
+	binmode($bf, ':utf8');
+	print $bf $boxes // '';
+	close $bf;
+
+	my $shot = call($s, 'Page.captureScreenshot', { format => 'png' });
+	open(my $pf, '>', $q->{o}) or die "awebcdp: $q->{o}: $!\n";
+	binmode $pf;
+	print $pf decode_base64($shot->{data});
+	close $pf;
+
+	if($o{c}){
+		savecookies(getcookies());
+		$cookietime = (stat($o{c}))[9] // 0;
+	}
+	return $final;
+}
+
+my $ppid = getppid();
+my $req = $login || $serve ? undef : request();
+my $lsock;
+if($serve){
+	unlink($serve);
+	$lsock = IO::Socket::UNIX->new(Type => SOCK_STREAM, Local => $serve, Listen => 5)
+		or die "awebcdp: $serve: $!\n";
+}
+
 $SIG{ALRM} = sub { kill('KILL', $pid); die "awebcdp: timeout\n" };
-alarm(60) unless $login;
+alarm(60) unless $login || $serve;
 
 my $cookies = loadcookies();
 call(undef, 'Storage.setCookies', { cookies => $cookies }) if @$cookies;
+$cookietime = (stat($o{c}))[9] // 0 if $o{c} && -e $o{c};
 
 my $t = call(undef, 'Target.createTarget', { url => 'about:blank' });
 my $s = call(undef, 'Target.attachToTarget', { targetId => $t->{targetId}, flatten => JSON::PP::true })->{sessionId};
@@ -217,52 +331,44 @@ if($login){
 	exit 0;
 }
 
-defined $o{$_} or die "awebcdp: -$_ needed\n" for qw(W H o b);
-my $scale = $o{s} || 1;
 call($s, 'Page.enable');
-call($s, 'Emulation.setDeviceMetricsOverride', {
-	width => int($o{W}), height => int($o{H}),
-	deviceScaleFactor => $scale + 0, mobile => JSON::PP::false });
-my $nav = call($s, 'Page.navigate', { url => $url });
-warn "awebcdp: $url: $nav->{errorText}\n" if $nav->{errorText};
-# pages that take long to load are shown as they are after the wait
-event($s, 'Page.loadEventFired', $wait/1000);
-select(undef, undef, undef, 0.5);
 
-my $js = <<'EOF';
-(function(){
-	var o = [];
-	document.querySelectorAll("a[href], area[href]").forEach(function(a){
-		var rs = a.getClientRects(), shown = 0;
-		for(var i = 0; i < rs.length; i++){
-			var r = rs[i];
-			if(r.width > 0 && r.height > 0){
-				o.push([Math.round(r.left+scrollX), Math.round(r.top+scrollY),
-					Math.round(r.right+scrollX), Math.round(r.bottom+scrollY), a.href].join(" "));
-				shown = 1;
-			}
+if($serve){
+	$SIG{PIPE} = 'IGNORE';
+	$SIG{TERM} = $SIG{HUP} = $SIG{INT} = sub { quit(); unlink($serve); exit 0 };
+	my $last = time;
+	# until chrome, or whoever started us, is gone, or after hours idle
+	while(!$dead && getppid() == $ppid && time - $last < 4*3600){
+		my $rin = '';
+		vec($rin, fileno($lsock), 1) = 1;
+		vec($rin, fileno($fromchrome), 1) = 1;
+		next if select(my $rout = $rin, undef, undef, 1) <= 0;
+		if(vec($rout, fileno($fromchrome), 1)){
+			# events between requests: keep up with them
+			my $r = sysread($fromchrome, $buf, 65536, length $buf);
+			$dead = 1 unless $r;
+			$buf = substr($buf, rindex($buf, "\0") + 1) if index($buf, "\0") >= 0;
 		}
-		if(!shown)
-			o.push(["0 0 0 0", a.href].join(" "));
-	});
-	return location.href + "\n" + o.join("\n") + "\n";
-})()
-EOF
-my $r = call($s, 'Runtime.evaluate', { expression => $js, returnByValue => JSON::PP::true });
-my $v = $r->{result}{value} // "$url\n";
-my ($final, $boxes) = split(/\n/, $v, 2);
-open(my $bf, '>', $o{b}) or die "awebcdp: $o{b}: $!\n";
-binmode($bf, ':utf8');
-print $bf $boxes // '';
-close $bf;
+		next unless vec($rout, fileno($lsock), 1);
+		my $c = $lsock->accept or next;
+		my $l = <$c>;
+		my $a;
+		if(my $q = eval { $json->decode($l // '') }){
+			my $u = eval { render($s, $q) };
+			$a = defined $u ? { url => $u } : { error => ($@ || 'failed') =~ s/\n+$//r };
+		}else{
+			$a = { error => 'bad request' };
+		}
+		print $c $json->encode($a), "\n";
+		close $c;
+		$last = time;
+	}
+	quit();
+	unlink($serve);
+	exit 0;
+}
 
-my $shot = call($s, 'Page.captureScreenshot', { format => 'png' });
-open(my $pf, '>', $o{o}) or die "awebcdp: $o{o}: $!\n";
-binmode $pf;
-print $pf decode_base64($shot->{data});
-close $pf;
-
-savecookies(getcookies()) if $o{c};
+my $final = render($s, $req);
 binmode(STDOUT, ':utf8');
 print "$final\n";
 quit();
