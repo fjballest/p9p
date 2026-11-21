@@ -15,6 +15,7 @@ enum
 	Gap = 2,	// space between items
 	Maxitems = 512,
 	Maxshown = 30,	// items shown without scrolling
+	Maxval = 256,	// runes in a field
 };
 
 static char	*items[Maxitems];
@@ -22,25 +23,39 @@ static int	nitems;
 static int	sel;		// selected item, or -1
 static int	top;		// first item shown
 static int	tflag;
-static char	*prompt;	// -i: ask for a line of text
-static Rune	entry[256];
-static int	nentry;
+static int	iflag;		// a form: items are prompts for text fields
+static Rune	*val[Maxitems];	// -i: text of each field
+static int	nval[Maxitems];
 static Image	*back, *high, *bord, *text, *htext;
 
-static void	drawentry(void);
+static void	drawfield(int);
 
 static void
 usage(void)
 {
-	fprint(2, "usage: 9menu [-t] [-f font] [-l label] [-W winsize] [item ...]\n       9menu -i prompt [-f font] [-l label] [-W winsize] [text]\n");
+	fprint(2, "usage: 9menu [-ti] [-f font] [-l label] [-W winsize] [item ...]\n");
 	exits("usage");
 }
 
 static void
 additem(char *s)
 {
+	char *p;
+	int i;
+
 	if(nitems >= Maxitems)
 		sysfatal("too many items");
+	if(iflag){
+		val[nitems] = malloc(Maxval*sizeof(Rune));
+		if(val[nitems] == nil)
+			sysfatal("malloc: %r");
+		if((p = strchr(s, '=')) != nil){
+			*p++ = 0;
+			for(i = 0; *p != 0 && i < Maxval; i++)
+				p += chartorune(&val[nitems][i], p);
+			nval[nitems] = i;
+		}
+	}
 	items[nitems++] = s;
 }
 
@@ -74,13 +89,25 @@ nshown(void)
 	return n;
 }
 
+// space above the items, to center them when the window is taller
+static int
+yoff(void)
+{
+	int n;
+
+	n = Dy(screen->r)-2*Margin - nitems*itemht();
+	if(n <= 0)
+		return 0;
+	return n/2;
+}
+
 static Rectangle
 itemrect(int i)
 {
 	Rectangle r;
 
 	r = insetrect(screen->r, Margin);
-	r.min.y += (i-top)*itemht();
+	r.min.y += yoff() + (i-top)*itemht();
 	r.max.y = r.min.y+itemht();
 	return r;
 }
@@ -94,6 +121,10 @@ drawitem(int i)
 
 	if(i < top || i >= top+nshown() || i >= nitems)
 		return;
+	if(iflag){
+		drawfield(i);
+		return;
+	}
 	r = itemrect(i);
 	if(i == sel){
 		draw(screen, r, high, nil, ZP);
@@ -125,10 +156,6 @@ eresized(int new)
 {
 	if(new && getwindow(display, Refnone) < 0)
 		sysfatal("can't reattach to window: %r");
-	if(prompt != nil){
-		drawentry();
-		return;
-	}
 	if(top > nitems-nshown())
 		top = nitems-nshown();
 	if(top < 0)
@@ -184,7 +211,9 @@ itemat(Point p)
 	r = insetrect(screen->r, Margin);
 	if(!ptinrect(p, r))
 		return -1;
-	i = top+(p.y-r.min.y)/itemht();
+	if(p.y < r.min.y+yoff())
+		return -1;
+	i = top+(p.y-r.min.y-yoff())/itemht();
 	if(i >= nitems || i >= top+nshown())
 		return -1;
 	return i;
@@ -246,9 +275,13 @@ guesswinsize(char *fontname)
 		cw = 9;
 	}
 	w = 0;
-	for(i = 0; i < nitems; i++)
-		if(utflen(items[i]) > w)
-			w = utflen(items[i]);
+	for(i = 0; i < nitems; i++){
+		n = utflen(items[i]);
+		if(iflag)
+			n += 1 + (nval[i] > 40 ? nval[i] : 40);
+		if(n > w)
+			w = n;
+	}
 	n = nitems;
 	if(n > Maxshown)
 		n = Maxshown;
@@ -265,6 +298,13 @@ fitwindow(void)
 	for(i = 0; i < nitems; i++)
 		if(stringwidth(font, items[i]) > w)
 			w = stringwidth(font, items[i]);
+	if(iflag){
+		n = 40;
+		for(i = 0; i < nitems; i++)
+			if(nval[i] > n)
+				n = nval[i];
+		w += stringwidth(font, " ") + n*stringwidth(font, "0");
+	}
 	w += 2*Margin + 2*stringwidth(font, "0");
 	n = nitems;
 	if(n > Maxshown)
@@ -280,70 +320,98 @@ fitwindow(void)
 		drawresizewindow(Rect(0, 0, w, h));
 }
 
+// width of the widest prompt, where the fields start
+static int
+promptwidth(void)
+{
+	int i, w;
+
+	w = 0;
+	for(i = 0; i < nitems; i++)
+		if(stringwidth(font, items[i]) > w)
+			w = stringwidth(font, items[i]);
+	return w;
+}
+
+// a field: its prompt, right aligned, and its text;
+// the selected one has the cursor
 static void
-drawentry(void)
+drawfield(int i)
 {
 	Rectangle r;
 	Point p;
-	char *t;
+	int pw;
 
-	draw(screen, screen->r, back, nil, ZP);
-	border(screen, screen->r, 2, bord, ZP);
-	r = insetrect(screen->r, Margin);
-	// the window may be taller than a line (a minimum size): center it
-	p = Pt(r.min.x, (r.min.y+r.max.y-font->height)/2);
-	if(p.y < r.min.y)
-		p.y = r.min.y;
-	p = string(screen, p, high, ZP, font, prompt);
-	p = string(screen, p, text, ZP, font, " ");
-	t = smprint("%.*S", nentry, entry);
-	p = string(screen, p, text, ZP, font, t);
-	free(t);
-	draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
-	flushimage(display, 1);
+	r = itemrect(i);
+	draw(screen, r, back, nil, ZP);
+	pw = promptwidth();
+	p = Pt(r.min.x+pw-stringwidth(font, items[i]), r.min.y+Gap/2);
+	string(screen, p, i == sel ? high : bord, ZP, font, items[i]);
+	p.x = r.min.x+pw+stringwidth(font, " ");
+	p = runestringn(screen, p, text, ZP, font, val[i], nval[i]);
+	if(i == sel)
+		draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
 }
 
-// run the -i dialog: edit a line of text, print it on Return
+// run the -i form: edit the fields, print them on Return
 static void
-doentry(void)
+doform(void)
 {
 	Event e;
-	char *t;
+	Mouse m;
+	int i;
 
-	drawentry();
+	redraw();
 	for(;;){
 		switch(event(&e)){
 		case Emouse:
+			m = e.mouse;
+			if(m.buttons & 8)
+				scroll(-1);
+			else if(m.buttons & 16)
+				scroll(1);
+			else if((m.buttons & 7) && itemat(m.xy) >= 0)
+				setsel(itemat(m.xy));
 			break;
 		case Ekeyboard:
 			switch(e.kbdc){
 			case '\n':
 			case '\r':
-				t = smprint("%.*S", nentry, entry);
-				print("%s\n", t);
+				for(i = 0; i < nitems; i++)
+					print("%.*S\n", nval[i], val[i]);
 				exits(nil);
 			case Kesc:
 			case Kdel:
 				exits("cancel");
+			case '\t':
+			case Kdown:
+			case 0x0e:	// ^N
+				setsel(sel+1 < nitems ? sel+1 : 0);
+				break;
+			case Kup:
+			case 0x10:	// ^P
+				setsel(sel > 0 ? sel-1 : nitems-1);
+				break;
 			case '\b':	// backspace
-				if(nentry > 0)
-					nentry--;
+				if(nval[sel] > 0)
+					nval[sel]--;
 				break;
 			case 0x15:	// ^U
-				nentry = 0;
+				nval[sel] = 0;
 				break;
 			case 0x17:	// ^W
-				while(nentry > 0 && isspacerune(entry[nentry-1]))
-					nentry--;
-				while(nentry > 0 && !isspacerune(entry[nentry-1]))
-					nentry--;
+				while(nval[sel] > 0 && isspacerune(val[sel][nval[sel]-1]))
+					nval[sel]--;
+				while(nval[sel] > 0 && !isspacerune(val[sel][nval[sel]-1]))
+					nval[sel]--;
 				break;
 			default:
-				if(e.kbdc >= ' ' && e.kbdc < KF && nentry < nelem(entry))
-					entry[nentry++] = e.kbdc;
+				if(e.kbdc >= ' ' && e.kbdc < KF && nval[sel] < Maxval)
+					val[sel][nval[sel]++] = e.kbdc;
 				break;
 			}
-			drawentry();
+			drawfield(sel);
+			flushimage(display, 1);
 			break;
 		}
 	}
@@ -373,26 +441,16 @@ main(int argc, char *argv[])
 		winsize = EARGF(usage());
 		break;
 	case 'i':
-		prompt = EARGF(usage());
+		iflag = 1;
 		break;
 	default:
 		usage();
 	}ARGEND
 
-	if(prompt != nil){
-		if(argc > 1)
-			usage();
-		if(argc == 1)
-			for(i = 0; argv[0][i] != 0 && nentry < nelem(entry); nentry++)
-				i += chartorune(&entry[nentry], argv[0]+i);
-		// one item, only to size the window
-		additem(smprint("%s %-40s", prompt, argc == 1 ? argv[0] : ""));
-	}else{
-		for(i = 0; i < argc; i++)
-			additem(argv[i]);
-		if(argc == 0)
-			readitems();
-	}
+	for(i = 0; i < argc; i++)
+		additem(argv[i]);
+	if(argc == 0)
+		readitems();
 	if(nitems == 0)
 		sysfatal("no items");
 
@@ -411,8 +469,8 @@ main(int argc, char *argv[])
 	if(!sized)
 		fitwindow();
 	einit(Emouse|Ekeyboard);
-	if(prompt != nil)
-		doentry();
+	if(iflag)
+		doform();
 	redraw();
 
 	buttons = 0;

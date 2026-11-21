@@ -4,7 +4,7 @@
 .SH SYNOPSIS
 .B 9menu
 [
-.B -t
+.B -ti
 ]
 [
 .B -f
@@ -20,25 +20,6 @@
 ]
 [
 .I item ...
-]
-.PP
-.B 9menu
-.B -i
-.I prompt
-[
-.B -f
-.I font
-]
-[
-.B -l
-.I label
-]
-[
-.B -W
-.I winsize
-]
-[
-.I text
 ]
 .SH DESCRIPTION
 .I 9menu
@@ -83,16 +64,26 @@ the window label (default
 With
 .BR -i ,
 .I 9menu
-asks for a line of text instead:
-it shows
-.I prompt
-followed by
-.I text
-(empty by default), which can be edited by typing,
-backspace, control-U (erase all) and control-W (erase a word).
-Return prints the text on standard output;
+shows a form instead: each
+.I item
+is the prompt for a line of text, and an item of the form
+.IB prompt = text
+gives the initial text after the first
+.BR = .
+The selected field, the first one to start with, shows a cursor
+and takes what is typed;
+backspace, control-U (erase all) and control-W (erase a word) edit it.
+Tab, the Down arrow or control-N select the next field, and
+the Up arrow or control-P the previous one;
+clicking on a field selects it too.
+Return prints the text of each field, one per line, in order;
 Escape or Delete close the window without printing anything,
 with a non-null exit status.
+Note that
+.IR rc (1)
+drops empty lines in
+.BR `{} ,
+so check the number of lines read when a field may be empty.
 .SH EXAMPLES
 Ask which acme to start:
 .IP
@@ -101,10 +92,13 @@ n=`{9menu -t main fdp sot}
 if(~ $#n 1) acme -l $home/acme.dump.$n
 .EE
 .PP
-Ask for a name:
+Ask for a name and a font, all at once:
 .IP
 .EX
-name=`{9menu -i 'Name:' talk}
+ifs='
+'
+x=`{9menu -i 'Name:=talk' 'Font:=/mnt/font/Consolas/18a/font'}
+if(~ $#x 2) echo name $x(1) font $x(2)
 .EE
 .SH SOURCE
 .B \*9/src/cmd/9menu.c

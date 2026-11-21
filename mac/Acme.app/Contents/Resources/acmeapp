@@ -53,26 +53,26 @@ fn tell {
 
 fn newacme {
 	name=()
-	n=`{9menu $mflags -i 'Name for the new acme:'}
-	if(~ $#n 0)
+	f=`{sed -n 's/^font=//p' $dir/$last >[2]/dev/null | sed 1q}
+	if(~ $#f 0)
+		f=/mnt/font/Consolas-Bold/14a/font
+	x=`{9menu $mflags -i 'Name for the new acme:' 'Font:='^$f}
+	if(~ $#x 0)
 		status=cancel
-	if not if(~ $n env || ! echo $n | grep -E -q '^[A-Za-z0-9_-]+$')
+	if not if(! ~ $#x 2)
+		tell 'Give both a name and a font.'
+	if not if(~ $x(1) env || ! echo $x(1) | grep -E -q '^[A-Za-z0-9_-]+$')
 		tell 'Use letters, digits, - and _ for the name.'
-	if not if(test -e $dir/$n)
-		name=$n
+	if not if(test -e $dir/$x(1))
+		name=$x(1)
 	if not {
-		f=`{sed -n 's/^font=//p' $dir/$last >[2]/dev/null | sed 1q}
-		if(~ $#f 0)
-			f=/mnt/font/Consolas-Bold/14a/font
-		f=`{9menu $mflags -i 'Font for acme '^$n^':' $f}
-		if(! ~ $#f 0){
-			{
-				echo '# Created by Acme.app on '^`{date +%Y-%m-%d}^.
-				echo '# NAMESPACE and DUMP default to /tmp/$user.ns.'^$n^' and $home/acme.dump.'^$n
-				echo 'font='^$f
-			} >$dir/$n
-			name=$n
-		}
+		n=$x(1)
+		{
+			echo '# Created by Acme.app on '^`{date +%Y-%m-%d}^.
+			echo '# NAMESPACE and DUMP default to /tmp/$user.ns.'^$n^' and $home/acme.dump.'^$n
+			echo 'font='^$x(2)
+		} >$dir/$n
+		name=$n
 	}
 }
 
