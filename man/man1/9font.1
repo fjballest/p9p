@@ -7,6 +7,10 @@
 .B -t
 ]
 [
+.B -d
+.I ms
+]
+[
 .B -s
 .I size
 ]
@@ -40,7 +44,10 @@ with the
 given by
 .B -s
 (default 14).
-Names are listed in the default font; after a couple of seconds
+Names are listed in the default font; after
+.I ms
+milliseconds (default 1000, set with
+.BR -d )
 without input (scrolling, clicking or typing), the names shown are
 redrawn in their own fonts, which are loaded only then.
 So scrolling and typing do not wait for fonts to load.

@@ -16,7 +16,6 @@ enum
 	Gap = 4,
 	Maxopen = 64,	// fonts kept open
 	Maxvis = 256,	// rows on the screen
-	Idle = 2000,	// ms without input before showing the fonts
 	Tick = 250,	// ms between timer events
 };
 
@@ -41,6 +40,7 @@ static int	nvis;
 static int	nopen;
 static int	rowh;		// height of a row
 static int	fancy;		// show each name in its font
+static int	idle = 1000;	// ms without input before showing the fonts
 static char	filter[128];
 static int	tflag;
 static Image	*back, *high, *bord, *text, *htext;
@@ -48,7 +48,7 @@ static Image	*back, *high, *bord, *text, *htext;
 static void
 usage(void)
 {
-	fprint(2, "usage: 9font [-t] [-s size] [-f font] [-l label] [-W winsize] [fontfile ...]\n");
+	fprint(2, "usage: 9font [-t] [-d ms] [-s size] [-f font] [-l label] [-W winsize] [fontfile ...]\n");
 	exits("usage");
 }
 
@@ -379,6 +379,9 @@ main(int argc, char *argv[])
 	case 't':
 		tflag = 1;
 		break;
+	case 'd':
+		idle = atoi(EARGF(usage()));
+		break;
 	case 'f':
 		fontname = EARGF(usage());
 		break;
@@ -421,7 +424,7 @@ main(int argc, char *argv[])
 	redraw();
 
 	// Names are shown in the default font; the fonts are
-	// shown (and loaded) only after Idle ms without input,
+	// shown (and loaded) only after idle ms without input,
 	// so scrolling and typing never wait for them.
 	buttons = 0;
 	last = nsec();
@@ -431,7 +434,7 @@ main(int argc, char *argv[])
 				;
 		ev = event(&e);
 		if(ev == Etimer){
-			if(!fancy && nsec()-last >= Idle*1000000LL){
+			if(!fancy && nsec()-last >= idle*1000000LL){
 				fancy = 1;
 				redraw();
 			}
