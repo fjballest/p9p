@@ -59,7 +59,7 @@ fn newacme {
 	x=`{9menu $mflags -i 'Name for the new acme:' 'Font:='^$f}
 	if(~ $#x 0)
 		status=cancel
-	if not if(! ~ $#x 2)
+	if not if(~ $x(1) _ || ~ $x(2) _)
 		tell 'Give both a name and a font.'
 	if not if(~ $x(1) env || ! echo $x(1) | grep -E -q '^[A-Za-z0-9_-]+$')
 		tell 'Use letters, digits, - and _ for the name.'

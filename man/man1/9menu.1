@@ -76,14 +76,16 @@ backspace, control-U (erase all) and control-W (erase a word) edit it.
 Tab, the Down arrow or control-N select the next field, and
 the Up arrow or control-P the previous one;
 clicking on a field selects it too.
-Return prints the text of each field, one per line, in order;
+Return prints the text of each field, one per line, in order,
+with
+.B _
+for an empty field
+(so that a
+.IR rc (1)
+.B `{}
+still yields one word per field);
 Escape or Delete close the window without printing anything,
 with a non-null exit status.
-Note that
-.IR rc (1)
-drops empty lines in
-.BR `{} ,
-so check the number of lines read when a field may be empty.
 .SH EXAMPLES
 Ask which acme to start:
 .IP

@@ -377,8 +377,12 @@ doform(void)
 			switch(e.kbdc){
 			case '\n':
 			case '\r':
+				// _ for an empty field, so rc's `{} keeps it
 				for(i = 0; i < nitems; i++)
-					print("%.*S\n", nval[i], val[i]);
+					if(nval[i] == 0)
+						print("_\n");
+					else
+						print("%.*S\n", nval[i], val[i]);
 				exits(nil);
 			case Kesc:
 			case Kdel:
