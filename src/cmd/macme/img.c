@@ -128,6 +128,17 @@ imgmouse(Window *w, Mouse *m)
 	int n, h;
 
 	h = w->body.fr.font->height;
+	if((m->buttons & (8|16)) == (8|16)){
+		// horizontal swipe from devdraw: bit 0 for left, delta from bit 5
+		n = m->buttons>>5;
+		if(n < 1)
+			n = 1;
+		if(n > 30)
+			n = 30;
+		w->imgoff.x += (m->buttons&1) ? -n*h : n*h;
+		imgdraw(w);
+		return;
+	}
 	if(m->buttons & (8|16)){
 		// devdraw on the mac sends how much to scroll (see acme)
 		n = m->buttons/4;

@@ -64,12 +64,17 @@ static ClientImpl macimpl = {
 @end
 
 static AppDelegate *myApp = NULL;
+static int hwheel;	// send horizontal swipes too (see scrollWheel)
 
 void
 gfx_main(void)
 {
+	char *p;
+
 	if(client0)
 		setprocname(argv0);
+	p = getenv("hwheel");
+	hwheel = p != nil && *p != 0;
 
 	@autoreleasepool{
 		[NSApplication sharedApplication];
@@ -611,7 +616,7 @@ rpc_resizewindow(Client *c, Rectangle r)
 
 - (void)scrollWheel:(NSEvent*)e
 {
-	CGFloat s;
+	CGFloat s, h;
 	int n, b;
 
 	// nemo: report how far the wheel moved, not just the
@@ -621,7 +626,27 @@ rpc_resizewindow(Client *c, Rectangle r)
 	// shifted left by one and with bits 8 and 16 cleared,
 	// is or'ed in. acme decodes it as buttons/4.
 	// Deltas under one line are ignored, as before.
+	// If $hwheel was set when devdraw started, mostly horizontal
+	// swipes are sent too, with both 8 and 16 set, bit 0 set for
+	// left, and the delta shifted left by 5 (see macme).
 	s = [e scrollingDeltaY];
+	h = [e scrollingDeltaX];
+	if(hwheel && fabs(h) > fabs(s)){
+		n = (short)h;
+		if(n == 0)
+			return;
+		b = 8|16;
+		if(n > 0)
+			b |= 1;
+		else
+			n = -n;
+		if(n > 1000)
+			n = 1000;
+		b |= n<<5;
+		[self sendmouse:b];
+		[self sendmouse:0];
+		return;
+	}
 	n = (short)s;
 	if(n == 0)
 		return;

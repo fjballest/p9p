@@ -177,10 +177,13 @@ threadmain(int argc, char *argv[])
 		threadexitsall("geninitdraw");
 	}
 */
+	// devdraw on the mac sends horizontal swipes only if asked
+	putenv("hwheel", "1");
 	if(initdraw(derror, fontnames[0], label) < 0){
 		fprint(2, "acme: can't open display: %r\n");
 		threadexitsall("initdraw");
 	}
+	unsetenv("hwheel");	// not for the programs acme runs
 
 	d = display;
 	font = d->defaultfont;
@@ -636,6 +639,9 @@ mousethread(void *v)
 				}
 				goto Continue;
 			}
+			// macme: horizontal swipes only move images
+			if((m.buttons & (8|16)) == (8|16))
+				goto Continue;
 			/* scroll buttons, wheels, etc. */
 			if(w != nil && (m.buttons & (8|16))){
 				if (1) {
