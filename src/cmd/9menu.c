@@ -17,21 +17,21 @@ enum
 	Maxshown = 30,	/* items shown without scrolling */
 };
 
-char	*items[Maxitems];
-int	nitems;
-int	sel = -1;	/* selected item, or -1 */
-int	top;		/* first item shown */
-int	tflag;
-Image	*back, *high, *bord, *text, *htext;
+static char	*items[Maxitems];
+static int	nitems;
+static int	sel = -1;	/* selected item, or -1 */
+static int	top;		/* first item shown */
+static int	tflag;
+static Image	*back, *high, *bord, *text, *htext;
 
-void
+static void
 usage(void)
 {
 	fprint(2, "usage: 9menu [-t] [-f font] [-l label] [-W winsize] [item ...]\n");
 	exits("usage");
 }
 
-void
+static void
 additem(char *s)
 {
 	if(nitems >= Maxitems)
@@ -39,7 +39,7 @@ additem(char *s)
 	items[nitems++] = s;
 }
 
-void
+static void
 readitems(void)
 {
 	Biobuf bin;
@@ -52,13 +52,13 @@ readitems(void)
 	Bterm(&bin);
 }
 
-int
+static int
 itemht(void)
 {
 	return font->height+Gap;
 }
 
-int
+static int
 nshown(void)
 {
 	int n;
@@ -69,7 +69,7 @@ nshown(void)
 	return n;
 }
 
-Rectangle
+static Rectangle
 itemrect(int i)
 {
 	Rectangle r;
@@ -80,7 +80,7 @@ itemrect(int i)
 	return r;
 }
 
-void
+static void
 drawitem(int i)
 {
 	Rectangle r;
@@ -103,7 +103,7 @@ drawitem(int i)
 	string(screen, p, fg, ZP, font, items[i]);
 }
 
-void
+static void
 redraw(void)
 {
 	int i;
@@ -128,7 +128,7 @@ eresized(int new)
 }
 
 /* make item i (-1 for none) the selected one, scrolling to show it */
-void
+static void
 setsel(int i)
 {
 	int o;
@@ -150,7 +150,7 @@ setsel(int i)
 	flushimage(display, 1);
 }
 
-void
+static void
 scroll(int n)
 {
 	int t;
@@ -166,7 +166,7 @@ scroll(int n)
 	}
 }
 
-int
+static int
 itemat(Point p)
 {
 	Rectangle r;
@@ -181,7 +181,7 @@ itemat(Point p)
 	return i;
 }
 
-void
+static void
 choose(int i)
 {
 	if(i < 0 || i >= nitems)
@@ -200,7 +200,7 @@ int _fontpipe(char*);
  * by reading the first line of the font file, so the window
  * can be created at about the right size.
  */
-int
+static int
 fontheight(char *name)
 {
 	char buf[64], *p;
@@ -226,7 +226,7 @@ fontheight(char *name)
 }
 
 /* set winsize to fit the items, guessing the font size */
-void
+static void
 guesswinsize(char *fontname)
 {
 	int i, n, h, cw, w;
@@ -249,7 +249,7 @@ guesswinsize(char *fontname)
 }
 
 /* fix the window size now that the font is known, if it is off */
-void
+static void
 fitwindow(void)
 {
 	int i, w, h, n, dx, dy;
