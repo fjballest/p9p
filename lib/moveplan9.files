@@ -7,6 +7,7 @@ bin/Getdir
 bin/adict
 bin/aimg
 bin/apdf
+bin/aweb
 bin/doctype
 bin/fossil/conf
 bin/ipso

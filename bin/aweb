@@ -1,0 +1,217 @@
+#!/usr/local/plan9/bin/rc
+# aweb [-h height] url - show a web page in a macme window.
+# The page is rendered as an image with a headless Chrome
+# (or Chromium, or Firefox), as wide as the window.
+# Links opens a window listing the page links (plumb them);
+# button 2 on a URL in the tag goes there; Back goes back;
+# Reload renders again; Zoom+ and Zoom- scale the page;
+# More renders more of the page.
+. $PLAN9/lib/acme.rc
+ifs=' 	
+'
+path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
+
+height=4000
+if(~ $1 -h){
+	height=$2
+	shift 2
+}
+if(! ~ $#* 1){
+	echo 'usage: aweb [-h height] url' >[1=2]
+	exit usage
+}
+url=$1
+switch($url){
+case *://*
+	;
+case /*
+	url=file://$url
+case *
+	if(test -e $url)
+		url=file://`{pwd}^/$url
+	if not
+		url=https://$url
+}
+hist=()
+zoom=100
+tmp=/tmp/aweb.$pid
+if(~ $#user 0)
+	user=$USER
+if(~ $#user 0)
+	user=`{id -un}
+prof=/tmp/aweb.$user.prof
+
+fn has {
+	~ `{ls $path^/$1 >[2]/dev/null} ?*
+}
+
+# the browser and how to run it
+mac='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+chrome=()
+if(~ $#browser 1)
+	chrome=$browser
+if not if(test -x $mac)
+	chrome=$mac
+if not for(b in google-chrome chromium chromium-browser){
+	if(~ $#chrome 0 && has $b)
+		chrome=$b
+}
+firefox=()
+if(~ $#chrome 0){
+	if(test -x /Applications/Firefox.app/Contents/MacOS/firefox)
+		firefox=/Applications/Firefox.app/Contents/MacOS/firefox
+	if not if(has firefox)
+		firefox=firefox
+	if not{
+		echo aweb: no chrome, chromium, or firefox >[1=2]
+		exit browser
+	}
+}
+
+fn chrome {
+	$chrome --headless --disable-gpu --hide-scrollbars --no-first-run \
+		--user-data-dir'='$prof $* >[2]/dev/null
+}
+
+# window width in pixels
+fn width {
+	w=`{winread image | awk '{print $1}'}
+	if(! ~ $w [1-9]*)
+		w=800
+	echo $w
+}
+
+# render $url as wide as the window
+fn render {
+	rm -f $tmp.png
+	w=`{width}
+	if(~ $#chrome 1){
+		s=`{echo $zoom | awk '{print $1/100}'}
+		cw=`{echo $w $zoom | awk '{print int($1*100/$2)}'}
+		ch=`{echo $height $zoom | awk '{print int($1*100/$2)}'}
+		chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
+			--screenshot'='$tmp.png $url >/dev/null
+	}
+	if not
+		$firefox --headless --window-size'='$w,$height --screenshot $tmp.png $url >/dev/null >[2=1]
+	if(! test -s $tmp.png){
+		echo aweb: $url: cannot render >[1=2]
+		status=render
+	}
+	if not{
+		png -t $tmp.png | winwrite image
+		rm -f $tmp.png
+		winname $url
+		# so Dump and Load bring the window back as it is
+		winctl dump aweb -h $height $url
+		status=''
+	}
+}
+
+fn go {
+	hist=($url $hist)
+	url=$1
+	if(! render){
+		url=$hist(1)
+		hist=$hist(2-)
+	}
+}
+
+# the links in the page, made absolute, one per line
+fn links {
+	if(~ $#chrome 1)
+		chrome --dump-dom $url
+	if not
+		curl -sL $url
+}
+
+fn showlinks {
+	links | awk -v 'url='$url '
+	function abs(l,   b) {
+		if(l ~ /^[a-zA-Z]+:/)
+			return l
+		match(url, /^[a-zA-Z]+:\/\/[^\/]*/)
+		b = substr(url, 1, RLENGTH)
+		if(l ~ /^\/\//)
+			return substr(url, 1, index(url, ":")) l
+		if(l ~ /^\//)
+			return b l
+		b = url
+		sub(/[?#].*/, "", b)
+		sub(/[^\/]*$/, "", b)
+		return b l
+	}
+	{
+		s = $0
+		while(match(s, /[hH][rR][eE][fF]="[^"]*"/)){
+			l = substr(s, RSTART+6, RLENGTH-7)
+			s = substr(s, RSTART+RLENGTH)
+			if(l == "" || l ~ /^#/ || l ~ /^javascript:/)
+				continue
+			gsub(/&amp;/, "\\&", l)
+			l = abs(l)
+			if(!(l in seen)){
+				seen[l] = 1
+				print l
+			}
+		}
+	}' > $tmp.links
+	{
+		id=$winid
+		newwindow
+		winname $url^'+links'
+		winwrite body < $tmp.links
+		winctl clean
+		winid=$id
+	}
+	rm -f $tmp.links
+}
+
+fn event {
+	switch($2){
+	case x X
+		switch($9){
+		case Back
+			if(! ~ $#hist 0){
+				url=$hist(1)
+				hist=$hist(2-)
+				render
+			}
+		case Reload
+			render
+		case Links
+			showlinks
+		case More
+			height=`{expr $height '*' 2}
+			render
+		case Zoom+
+			zoom=`{expr $zoom '*' 5 / 4}
+			render
+		case Zoom-
+			if(! ~ $zoom [0-9] [1-3][0-9]){
+				zoom=`{expr $zoom '*' 4 / 5}
+				render
+			}
+		case *://*
+			go $9
+		case *
+			winwriteevent $*
+		}
+	case I
+		;	# a click on the page
+	case *
+		winwriteevent $*
+	}
+}
+
+newwindow
+winname $url
+winctl dumpdir /
+echo -n ' Back Reload Links More Zoom+ Zoom- ' | winwrite tag
+winctl clean
+if(! render){
+	windel sure
+	exit render
+}
+wineventloop
+rm -f $tmp.png

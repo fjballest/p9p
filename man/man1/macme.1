@@ -1,6 +1,6 @@
 .TH MACME 1
 .SH NAME
-macme, apdf, aimg \- acme with image windows
+macme, apdf, aimg, aweb \- acme with image windows
 .SH SYNOPSIS
 .B macme
 [
@@ -23,6 +23,13 @@ macme, apdf, aimg \- acme with image windows
 .I percent
 ]
 .I file
+.PP
+.B aweb
+[
+.B -h
+.I height
+]
+.I url
 .SH DESCRIPTION
 .I Macme
 is
@@ -64,6 +71,13 @@ had been executed, instead of scrolling.
 .PP
 The wheel, the scroll bar, and the arrow, page, Home and End keys
 scroll the image; typing does not change it.
+On macOS, horizontal swipes (e.g., on a Magic Mouse) scroll it
+sideways: macme sets
+.B $hwheel
+when it starts
+.IR devdraw ,
+which then sends them as mouse events with buttons 8 and 16
+both set, button 1 set for left, and the amount shifted left 5 bits.
 Clicking on the image sends an event
 .IP
 .EX
@@ -114,7 +128,30 @@ and
 .B Zoom!
 in the tag.
 .PP
-Both write
+.I Aweb
+shows a web page (a file name or a URL) rendered as an image,
+as wide as the window and
+.I height
+pixels tall (4000 by default), with a headless Chrome or Chromium
+(or
+.B $browser
+if set), or Firefox.
+.B Links
+opens a window with the links in the page, to be plumbed;
+button 2 on a URL in the tag shows it;
+.B Back
+goes back,
+.B Reload
+renders again,
+.B More
+doubles the height, and
+.B Zoom+
+and
+.B Zoom-
+scale the page.
+Clicks on the page do not follow links.
+.PP
+All of them write
 .B dumpdir
 and
 .B dump
@@ -148,6 +185,8 @@ plot ... | topng | png -t | winwrite image
 .B \*9/bin/apdf
 .br
 .B \*9/bin/aimg
+.br
+.B \*9/bin/aweb
 .SH SEE ALSO
 .IR acme (1),
 .IR acme (4),
