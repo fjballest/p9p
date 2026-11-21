@@ -1,21 +1,6 @@
 [NB: this is plan9port with local changes by nemo, kept as commits
-on top of upstream https://github.com/9fans/plan9port (see git log).
-
-acme:
-- Size command (also in the row tag) to make all columns equal width;
-  Newcol/Delcol resize, and the initial column count depends on the screen width.
-- accelerated scrolling: the wheel/Magic Mouse delta scrolls that many lines
-  (devdraw on macOS passes the delta in the high bits of the button word).
-- windows whose name contains + in the last element are scratch;
-  *.out windows get Get in the tag.
-- ! is a file name character.
-- Getall (from Sape Mullender), $acmetags, autoindent tab after {.
-
-lib9 shows /Users/nemo/u as /u; rcmain splits only on newlines.
-
-Branch local-2023 is a snapshot of the sources installed at /u/plan9
-from 2023 to 2026; old-master-2021 is the previous master.
--nemo]
+on top of upstream https://github.com/9fans/plan9port.
+They are listed in CHANGES.nemo. -nemo]
 
 This is a port of many Plan 9 libraries and programs to Unix.
 

@@ -1,0 +1,83 @@
+Local changes by nemo, kept as commits on top of
+upstream https://github.com/9fans/plan9port.
+See git log upstream/master..master for the details.
+
+acme
+	Size (also in the row tag) makes all columns equal width;
+	Newcol/Delcol resize, and the initial number of columns
+	depends on the screen width.
+
+	The wheel (and Magic Mouse) scrolls by the amount reported,
+	not by a fixed step (see devdraw below).
+
+	A window with + in the last element of its name is a scratch
+	window; *.out windows get Get in the tag.
+
+	! is a file name character.
+
+	Getall (from Sape Mullender) does Get in all windows with
+	a file, except scratch windows and those with an open
+	event file.
+
+	$acmetags has lines "regexp text": a window whose name
+	matches regexp gets text in its tag instead of Look.
+
+	Autoindent adds a tab after a line ending in {.
+
+	$acmedump is the default file for Dump and Load.
+
+	The "sys: child" note is ignored: it made acme kill its
+	processes, dump, and quit when a child (e.g., the fontsrv
+	used to load a font) exited early.
+
+devdraw (macOS)
+	Wheel events carry the scroll amount: bit 8 or 16 gives
+	the direction, and the delta, shifted left one bit and with
+	8 and 16 cleared, is or'ed in (acme uses buttons/4).
+	A release follows each wheel event.
+
+	New and resized windows are at least 64x64, so tiny windows
+	(e.g., a one-line 9menu) no longer leave an empty image.
+
+libdraw
+	Programs using event(3) exit with status "hangup", not
+	success, when the window is closed.
+
+lib9
+	getwd and cleanname show /Users/nemo/u as /u.
+
+rcmain
+	ifs is just newline by default; $home/lib/profile is read
+	only if $_prof is unset.
+
+9menu (new)
+	Choose an item from a menu in a window and print its number
+	(or its text with -t). With -i, a form: each item is a
+	prompt for a text field (prompt=text gives the initial text),
+	and Return prints the fields, one per line, with _ for an
+	empty one. An item "label !cmd" runs cmd with rc when chosen;
+	in a form, clicking its prompt runs cmd and puts its first
+	line of output in the field. See 9menu(1).
+
+9font (new)
+	Choose a font from a list (fontsrv fonts, or font files),
+	each name shown in its own font after a second without input
+	(-d ms), and print its file name. Typing filters the list;
+	Tab switches to typing the size. See 9font(1).
+
+mac/Acme.app (new)
+	Double-click to choose which acme to start, each with its
+	own font, namespace, dump, plumber, and fontsrv, from
+	profiles in $home/lib/acmeapp (rc files; samples in
+	Resources/profiles). The menu can also create (New) and
+	remove (Remove) acmes. Written in rc, using 9menu and 9font.
+	When acme exits, everything serving in its namespace is
+	killed. Logs to /tmp/acmeapp.$user.log.
+
+Style
+	Comments added in acme, devdraw, and the new programs use
+	//, keeping /* */ for commenting out code.
+
+Branches
+	local-2023 is a snapshot of the sources installed at /u/plan9
+	from 2023 to 2026; old-master-2021 is the previous master.
