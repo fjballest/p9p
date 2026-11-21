@@ -54,27 +54,28 @@ fn fit {
 	}'
 }
 
-# show $page at $res; fails if there is no such page
+# show $page at $res; fails if there is no such page.
+# If a renderer fails (some crash on some PDFs), try the next one.
 fn render {
-	rm -f $tmp.png
-	if(has mutool)
-		mutool draw -q -r $res -o $tmp.png $f $page >[2]/dev/null
-	if not if(has pdftoppm)
-		pdftoppm -f $page -l $page -r $res -png -singlefile $f $tmp >[2]/dev/null
-	if not if(has gs)
-		gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='png16m -r$res \
-			-dFirstPage'='$page -dLastPage'='$page -sOutputFile'='$tmp.png $f >[2]/dev/null
-	if not{
+	rm -f $tmp.png $tmp.err
+	if(! has mutool && ! has pdftoppm && ! has gs){
 		echo apdf: no mutool, pdftoppm, or gs >[1=2]
 		exit render
 	}
+	if(has mutool)
+		mutool draw -q -r $res -o $tmp.png $f $page >[2]$tmp.err
+	if(! test -s $tmp.png && has pdftoppm)
+		pdftoppm -f $page -l $page -r $res -png -singlefile $f $tmp >>[2]$tmp.err
+	if(! test -s $tmp.png && has gs)
+		gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='png16m -r$res \
+			-dFirstPage'='$page -dLastPage'='$page -sOutputFile'='$tmp.png $f >>[2]$tmp.err
 	if(! test -s $tmp.png){
 		rm -f $tmp.png
 		status=nopage
 	}
 	if not{
 		png -t $tmp.png | winwrite image
-		rm -f $tmp.png
+		rm -f $tmp.png $tmp.err
 		# so Dump and Load bring the window back as it is
 		winctl dump apdf -r $res $f $page
 		status=''
@@ -137,7 +138,11 @@ echo -n ' Next Prev Zoom+ Zoom- Zoom! ' | winwrite tag
 winctl clean
 if(! render){
 	echo apdf: $f: no page $page >[1=2]
+	cat $tmp.err >[1=2]
+	rm -f $tmp.err
 	windel sure
 	exit nopage
 }
 wineventloop
+
+rm -f $tmp.err
