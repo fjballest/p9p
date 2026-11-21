@@ -476,6 +476,12 @@ xfidwrite(Xfid *x)
 		goto BodyTag;
 
 	case Qlabel:
+		// the title of the OS window
+		nb = strlen(x->fcall.data);
+		while(nb > 0 && (x->fcall.data[nb-1] == '\n' || x->fcall.data[nb-1] == ' '))
+			x->fcall.data[--nb] = 0;
+		if(nb > 0)
+			drawsetlabel(x->fcall.data);
 		fc.count = x->fcall.count;
 		respond(x, &fc, nil);
 		break;
@@ -736,6 +742,7 @@ out:
 			}
 			w->dumpstr = runetobyte(r, nr);
 			m += (q+1) - pp;
+			rowplace(w);	// back where it was, if it comes from Load
 		}else
 		if(strncmp(p, "dumpdir ", 8) == 0){	/* set dump directory */
 			pp = p+8;

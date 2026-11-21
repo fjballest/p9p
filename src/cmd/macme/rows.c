@@ -586,6 +586,73 @@ rowloadfonts(char *file)
 	Bterm(b);
 }
 
+// Windows of external commands (e entries) in a loaded dump.
+// The commands make their windows later, wherever acme puts
+// new windows; when one sets the dump string it was loaded
+// with, rowplace moves it back to where it was.
+typedef struct Place Place;
+struct Place
+{
+	char	*cmd;
+	int	col;
+	double	percent;
+	Place	*next;
+};
+static Place *places;
+
+static void
+addplace(char *cmd, int col, double percent)
+{
+	Place *p, **pp;
+
+	p = emalloc(sizeof *p);
+	p->cmd = estrdup(cmd);
+	p->col = col;
+	p->percent = percent;
+	for(pp=&places; *pp!=nil; pp=&(*pp)->next)
+		;
+	*pp = p;
+}
+
+static void
+clearplaces(void)
+{
+	Place *p;
+
+	while((p = places) != nil){
+		places = p->next;
+		free(p->cmd);
+		free(p);
+	}
+}
+
+void
+rowplace(Window *w)
+{
+	Place *p, **pp;
+	Column *c;
+	int y;
+
+	if(w->dumpstr == nil || w->col == nil)
+		return;
+	for(pp=&places; (p=*pp)!=nil; pp=&p->next)
+		if(strcmp(p->cmd, w->dumpstr) == 0)
+			break;
+	if(p == nil)
+		return;
+	*pp = p->next;
+	if(p->col < row.ncol){
+		c = row.col[p->col];
+		y = c->r.min.y+(p->percent*Dy(c->r))/100+0.5;
+		if(y<c->r.min.y || y>=c->r.max.y)
+			y = -1;
+		colclose(w->col, w, FALSE);
+		coladd(c, w, nil, y);
+	}
+	free(p->cmd);
+	free(p);
+}
+
 int
 rowload(Row *row, char *file, int initing)
 {
@@ -616,6 +683,7 @@ rowload(Row *row, char *file, int initing)
 		warning(nil, "can't open load file %s: %r\n", file);
 		goto Rescue1;
 	}
+	clearplaces();
 	/* current directory */
 	line = 0;
 	l = rdline(b, &line);
@@ -719,6 +787,8 @@ rowload(Row *row, char *file, int initing)
 		case 'e':
 			if(Blinelen(b) < 1+5*12+1)
 				goto Rescue2;
+			i = atoi(l+1+0*12);
+			percent = atof(l+1+4*12);
 			l = rdline(b, &line);	/* ctl line; ignored */
 			if(l == nil)
 				goto Rescue2;
@@ -742,6 +812,10 @@ rowload(Row *row, char *file, int initing)
 				goto Rescue2;
 			t = emalloc(Blinelen(b)+1);
 			memmove(t, l, Blinelen(b));
+			if(i>=0 && i<=10){
+				l[Blinelen(b)-1] = 0;
+				addplace(l, i, percent);
+			}
 			run(nil, t, r, nr, TRUE, nil, nil, FALSE);
 			/* r is freed in run() */
 			goto Nextline;

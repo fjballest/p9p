@@ -64,7 +64,7 @@ void
 threadmain(int argc, char *argv[])
 {
 	int i;
-	char *p, *loadfile;
+	char *p, *loadfile, *label;
 	Column *c;
 	int ncol;
 	Display *d;
@@ -74,6 +74,7 @@ threadmain(int argc, char *argv[])
 	ncol = -1;
 
 	loadfile = nil;
+	label = "acme";
 	ARGBEGIN{
 	case 'D':
 		{extern int _threaddebuglevel;
@@ -109,6 +110,12 @@ threadmain(int argc, char *argv[])
 		if(loadfile == nil)
 			goto Usage;
 		break;
+	case 'L':
+		// title for the OS window (e.g., "Acme fdp")
+		label = ARGF();
+		if(label == nil)
+			goto Usage;
+		break;
 	case 'm':
 		mtpt = ARGF();
 		if(mtpt == nil)
@@ -124,7 +131,7 @@ threadmain(int argc, char *argv[])
 		break;
 	default:
 	Usage:
-		fprint(2, "usage: acme -a -c ncol -f fontname -F fixedwidthfontname -l loadfile -W winsize\n");
+		fprint(2, "usage: acme -a -c ncol -f fontname -F fixedwidthfontname -l loadfile -L label -W winsize\n");
 		threadexitsall("usage");
 	}ARGEND
 
@@ -170,7 +177,7 @@ threadmain(int argc, char *argv[])
 		threadexitsall("geninitdraw");
 	}
 */
-	if(initdraw(derror, fontnames[0], "acme") < 0){
+	if(initdraw(derror, fontnames[0], label) < 0){
 		fprint(2, "acme: can't open display: %r\n");
 		threadexitsall("initdraw");
 	}

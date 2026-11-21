@@ -346,6 +346,7 @@ int		rowclean(Row*);
 void		rowdump(Row*, char*);
 int		rowload(Row*, char*, int);
 void		rowloadfonts(char*);
+void		rowplace(Window*);
 
 struct Timer
 {

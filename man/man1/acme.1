@@ -23,6 +23,10 @@ acme, win, awd \- interactive text windows
 .I mtpt
 ]
 [
+.B -L
+.I label
+]
+[
 .B -l
 .I file
 |
@@ -80,6 +84,13 @@ the default is
 Tab intervals are set to the width of 4 (or the value of
 .BR $tabstop )
 numeral zeros in the appropriate font.
+.PP
+The
+.B -L
+option sets the title of the window in the host window system
+(default
+.BR acme ),
+which helps to tell apart several running instances.
 .PP
 The
 .B -m

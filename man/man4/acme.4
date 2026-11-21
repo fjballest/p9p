@@ -93,8 +93,12 @@ only the most recently used will appear in the
 file.
 .TP
 .B label
-is an empty file, writable without effect, present only for compatibility with
-.BR rio .
+is an empty file; text written to it becomes the title of
+.IR acme 's
+window in the host window system (see the
+.B -L
+option in
+.IR acme (1)).
 .TP
 .B log
 reports a log of window operations since the opening of the

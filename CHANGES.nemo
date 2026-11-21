@@ -26,6 +26,13 @@ acme
 
 	$acmedump is the default file for Dump and Load.
 
+	Load puts the windows of external commands (those that set
+	dump in their ctl file, like win) back in the column and
+	place they had, once the command sets the same dump string.
+
+	-L label sets the title of the window in the host window
+	system (default acme); writing to /mnt/acme/label changes it.
+
 	The "sys: child" note is ignored: it made acme kill its
 	processes, dump, and quit when a child (e.g., the fontsrv
 	used to load a font) exited early.
@@ -68,8 +75,12 @@ rcmain
 macme, apdf, aimg (new, prototype)
 	macme is acme where a window body can show an image:
 	write an image(6) to /mnt/acme/N/image; clicks on it
-	come as MI events. apdf shows PDF pages (Next, Prev,
-	Zoom+, Zoom-), aimg shows image files. See macme(1).
+	come as MI events. Reading the image file gives the panel
+	and image sizes, and the ctl message pagekeys sends PgUp,
+	PgDn, Home and End to the client. apdf shows PDF pages
+	(Next, Prev, PgUp, PgDn, Home, End, Zoom+, Zoom-, and
+	Zoom! to fit the window), aimg shows image files (Zoom+,
+	Zoom-, Zoom!). See macme(1).
 
 mac/Acme.app (new)
 	Double-click to choose which acme to start, each with its
@@ -78,7 +89,8 @@ mac/Acme.app (new)
 	Resources/profiles). The menu can also create (New) and
 	remove (Remove) acmes. Written in rc, using 9menu and 9font.
 	When acme exits, everything serving in its namespace is
-	killed. Logs to /tmp/acmeapp.$user.log.
+	killed. Logs to /tmp/acmeapp.$user.log. The OS window
+	is titled "Acme name". A profile can set acmeprog=macme.
 
 Style
 	Comments added in acme, devdraw, and the new programs use

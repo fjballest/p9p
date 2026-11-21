@@ -125,7 +125,7 @@ if(! 9p stat font >/dev/null >[2=1]){
 arch=x86_64
 if(arch -arch arm64 true >/dev/null >[2=1])
 	arch=arm64
-args=($acmeflags)
+args=($acmeflags -L 'Acme '^$name)
 if(! ~ $#font 0)
 	args=($args -f $font)
 if(! ~ $#altfont 0)

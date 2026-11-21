@@ -165,9 +165,11 @@ xfidopen(Xfid *x)
 			break;
 		case QWimage:
 			// macme: a new image replaces the old one on close
-			free(w->imgbuf);
-			w->imgbuf = nil;
-			w->nimgbuf = 0;
+			if((x->fcall.mode&3) != OREAD){
+				free(w->imgbuf);
+				w->imgbuf = nil;
+				w->nimgbuf = 0;
+			}
 			w->nopen[q]++;
 			break;
 		case QWwrsel:
@@ -354,6 +356,11 @@ xfidread(Xfid *x)
 		b = winctlprint(w, buf, 1);
 		goto Readb;
 
+	case QWimage:
+		// macme: sizes of the panel and the image
+		imgsize(w, buf);
+		goto Readbuf;
+
 	Readbuf:
 		b = buf;
 	Readb:
@@ -492,6 +499,12 @@ xfidwrite(Xfid *x)
 		goto BodyTag;
 
 	case Qlabel:
+		// the title of the OS window
+		nb = strlen(x->fcall.data);
+		while(nb > 0 && (x->fcall.data[nb-1] == '\n' || x->fcall.data[nb-1] == ' '))
+			x->fcall.data[--nb] = 0;
+		if(nb > 0)
+			drawsetlabel(x->fcall.data);
 		fc.count = x->fcall.count;
 		respond(x, &fc, nil);
 		break;
@@ -682,6 +695,10 @@ xfidctlwrite(Xfid *x, Window *w)
 			winresize(w, w->r, FALSE, TRUE);
 			m = 7;
 		}else
+		if(strncmp(p, "pagekeys", 8) == 0){	// macme: page keys go to the client
+			w->pagekeys = TRUE;
+			m = 8;
+		}else
 		if(strncmp(p, "clean", 5) == 0){	/* mark window 'clean', seq=0 */
 			t = &w->body;
 			t->eq0 = ~0;
@@ -765,6 +782,7 @@ out:
 			}
 			w->dumpstr = runetobyte(r, nr);
 			m += (q+1) - pp;
+			rowplace(w);	// back where it was, if it comes from Load
 		}else
 		if(strncmp(p, "dumpdir ", 8) == 0){	/* set dump directory */
 			pp = p+8;

@@ -243,6 +243,7 @@ struct Window
 	Point	imgoff;		// part of img at the top left of the body
 	char	*imgbuf;	// image being written
 	long	nimgbuf;
+	uchar	pagekeys;	// send page keys to the client
 	Rectangle	r;
 	uchar	isdir;
 	uchar	isscratch;
@@ -308,6 +309,7 @@ void	imgmouse(Window*, Mouse*);
 int	imgtype(Window*, Rune);
 char*	imgload(Window*);
 void	imgfree(Window*);
+void	imgsize(Window*, char*);
 void	winmousebut(Window*);
 void	winaddincl(Window*, Rune*, int);
 void	wincleartag(Window*);
@@ -358,6 +360,7 @@ int		rowclean(Row*);
 void		rowdump(Row*, char*);
 int		rowload(Row*, char*, int);
 void		rowloadfonts(char*);
+void		rowplace(Window*);
 
 struct Timer
 {
