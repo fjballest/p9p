@@ -97,7 +97,9 @@ macme, apdf, aimg (new, prototype)
 	Zoom! to fit the window), aimg shows image files (Zoom+,
 	Zoom-, Zoom!), and aweb shows web pages rendered by a
 	headless Chrome (clicks follow links; Links, Back,
-	Reload, More, Zoom+, Zoom-). Horizontal swipes scroll images sideways.
+	Reload, More, Zoom+, Zoom-, and Login to log in to a site
+	in a Chrome window; cookies are kept in $home/lib/aweb).
+	Horizontal swipes scroll images sideways.
 	The ctl message place moves a window to a column and height.
 	apascdb runs pascdb (the stepper of the pasc Pascal
 	compiler) with each view in its own window: source with

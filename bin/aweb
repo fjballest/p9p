@@ -7,18 +7,31 @@
 # button 2 on a URL in the tag goes there; Back goes back;
 # Reload renders again; Zoom+ and Zoom- scale the page;
 # More renders more of the page.
+# With chrome, cookies are kept in $home/lib/aweb/cookies;
+# Login (or aweb -l) opens the page in a Chrome window to log
+# in there; Reload once logged in.
 . $PLAN9/lib/acme.rc
 ifs=' 	
 '
 path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
 
 height=4000
-if(~ $1 -h){
-	height=$2
-	shift 2
+login=()
+while(~ $1 -*){
+	switch($1){
+	case -h
+		height=$2
+		shift
+	case -l
+		login=yes
+	case *
+		echo 'usage: aweb [-l] [-h height] url' >[1=2]
+		exit usage
+	}
+	shift
 }
 if(! ~ $#* 1){
-	echo 'usage: aweb [-h height] url' >[1=2]
+	echo 'usage: aweb [-l] [-h height] url' >[1=2]
 	exit usage
 }
 url=$1
@@ -68,19 +81,22 @@ if(~ $#chrome 0){
 	}
 }
 
-# chrome prof args: each call has its own profile (chrome refuses
-# to share one); pages that take long to load are shown as they
-# are after $wait ms, and chrome is killed after 30 seconds.
-wait=5000
-fn chrome {
-	prof=$tmp.$1
-	shift
-	perl -e 'alarm shift; exec @ARGV' 30 $chrome --headless --disable-gpu \
-		--hide-scrollbars --no-first-run --no-default-browser-check \
-		--disable-extensions --disable-sync --disable-background-networking \
-		--mute-audio --timeout'='$wait --user-data-dir'='$prof $* >>[2]$tmp.err
-	pkill -f $prof >[2]/dev/null
-	status=''
+# chrome runs through awebcdp, which keeps the cookies
+# (so logins last) and records the link boxes; pages that take
+# long to load are shown as they are after $wait ms.
+wait=15000
+cookies=()
+if(~ $#chrome 1){
+	if(~ $#home 0)
+		home=$HOME
+	cookies=$home/lib/aweb/cookies
+	mkdir -p $home/lib/aweb
+}
+
+# open $url in a Chrome window, to log in there
+fn login {
+	if(~ $#chrome 1)
+		AWEBCHROME=$chrome awebcdp -l -c $cookies $url >[2]/dev/null &
 }
 
 # window width in pixels
@@ -89,53 +105,6 @@ fn width {
 	if(! ~ $w [1-9]*)
 		w=800
 	echo $w
-}
-
-# the page source, with a base for relative names and a script
-# that lists the boxes of the links in the DOM (for --dump-dom),
-# so clicks on the page can follow them.
-fn source {
-	rm -f $tmp.src
-	switch($url){
-	case file://*
-		cat `{echo $url | sed 's,^file://,,; s,[?#].*,,'} > $tmp.src >[2]/dev/null
-		base=$url
-	case *
-		base=`{curl -sL --max-time 15 -A 'Mozilla/5.0' -o $tmp.src -w '%{url_effective}' $url >[2]/dev/null}
-		if(~ $#base 0)
-			base=$url
-	}
-	if(! test -s $tmp.src)
-		status=nosource
-	if not{
-		awk -v 'base='$base '
-		!done && match(tolower($0), /<head[^>]*>/){
-			print substr($0, 1, RSTART+RLENGTH-1) "<base href=\"" base "\">" substr($0, RSTART+RLENGTH)
-			done = 1
-			next
-		}
-		{ print }
-		END {
-			if(!done)
-				print "<base href=\"" base "\">"
-			print "<script>function aweblinks(){"
-			print "var o = [];"
-			print "document.querySelectorAll(\"a[href]\").forEach(function(a){"
-			print "var rs = a.getClientRects();"
-			print "for(var i = 0; i < rs.length; i++){ var r = rs[i];"
-			print "if(r.width > 0 && r.height > 0) o.push([Math.round(r.left+scrollX), Math.round(r.top+scrollY), Math.round(r.right+scrollX), Math.round(r.bottom+scrollY), a.href].join(\" \")); }"
-			print "});"
-			print "var p = document.createElement(\"aweblinks\");"
-			print "p.textContent = \"\\n\" + o.join(\"\\n\") + \"\\n\";"
-			print "var q = document.querySelector(\"aweblinks\"); if(q) q.remove();"
-			print "document.documentElement.appendChild(p);"
-			print "}"
-			print "document.addEventListener(\"DOMContentLoaded\", aweblinks);"
-			print "window.addEventListener(\"load\", aweblinks);</script>"
-		}' $tmp.src > $tmp.html
-		rm -f $tmp.src
-		status=''
-	}
 }
 
 # render $url as wide as the window; with chrome, also
@@ -147,36 +116,14 @@ fn render {
 		s=`{echo $zoom | awk '{print $1/100}'}
 		cw=`{echo $w $zoom | awk '{print int($1*100/$2)}'}
 		ch=`{echo $height $zoom | awk '{print int($1*100/$2)}'}
-		page=$url
-		if(source)
-			page=file://$tmp.html
-		# the links, at the same time as the image
-		rm -f $tmp.dom
-		if(~ $page file://$tmp.html){
-			chrome domprof --window-size'='$cw,$ch --dump-dom $page > $tmp.dom &
-			dompid=$apid
-		}
-		chrome shotprof --force-device-scale-factor'='$s --window-size'='$cw,$ch \
-			--screenshot'='$tmp.png $page >/dev/null
-		if(~ $page file://$tmp.html){
-			wait $dompid
-			awk '
-				/<aweblinks>/ { on = 1; sub(/.*<aweblinks>/, "") }
-				on && /<\/aweblinks>/ { sub(/<\/aweblinks>.*/, ""); if(NF >= 5) print; exit }
-				on && NF >= 5 { gsub(/&amp;/, "\\&"); print }' $tmp.dom > $tmp.boxes
-			rm -f $tmp.dom
-		}
-		if(! test -s $tmp.png && ! ~ $page $url){
-			# the copy did not work: show the page itself, without links
-			page=$url
-			rm -f $tmp.boxes
-			chrome shotprof --force-device-scale-factor'='$s --window-size'='$cw,$ch \
-				--screenshot'='$tmp.png $page >/dev/null
-		}
+		u=`{AWEBCHROME=$chrome awebcdp -c $cookies -s $s -w $wait \
+			-W $cw -H $ch -o $tmp.png -b $tmp.boxes $url >[2]$tmp.err}
+		# where redirections took us
+		if(~ $#u 1 && test -s $tmp.png)
+			url=$u
 	}
 	if not
 		$firefox --headless --window-size'='$w,$height --screenshot $tmp.png $url >/dev/null >[2]$tmp.err
-	rm -f $tmp.html
 	if(! test -s $tmp.png){
 		echo aweb: $url: cannot render >[1=2]
 		tail -5 $tmp.err >[1=2]
@@ -220,8 +167,8 @@ fn go {
 
 # the links in the page, made absolute, one per line
 fn links {
-	if(~ $#chrome 1)
-		chrome --dump-dom $url
+	if(test -s $tmp.boxes)
+		awk '{ print "href=\"" $5 "\"" }' $tmp.boxes
 	if not
 		curl -sL $url
 }
@@ -283,6 +230,8 @@ fn event {
 			}
 		case Reload
 			render
+		case Login
+			login
 		case Links
 			showlinks
 		case More
@@ -320,13 +269,17 @@ fn event {
 newwindow
 winname $url
 winctl dumpdir /
-echo -n ' Back Reload Links More Zoom+ Zoom- ' | winwrite tag
+tag=' Back Reload Links More Zoom+ Zoom- '
+if(~ $#chrome 1)
+	tag=$tag^'Login '
+echo -n $tag | winwrite tag
 winctl clean
+if(~ $login yes)
+	login
 if(! render){
 	# keep the window, to show why
 	{ echo aweb: $url: cannot render; cat $tmp.err } | winwrite body
 	winctl clean
 }
 wineventloop
-rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src $tmp.err
-rm -rf $tmp.shotprof $tmp.domprof $tmp.dom
+rm -f $tmp.png $tmp.boxes $tmp.err
