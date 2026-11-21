@@ -1,6 +1,6 @@
 #include <lib9.h>
 
-void (*_sysfatal)(char*, ...);
+void (*_sysfatal)(char*, va_list);	// threadsysfatal: a va_list, not ... (arm64 passes them differently)
 
 void
 sysfatal(char *fmt, ...)
