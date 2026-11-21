@@ -1,13 +1,18 @@
 #!/usr/local/plan9/bin/rc
-# aimg file - show an image in a macme window.
+# aimg [-s percent] file - show an image in a macme window.
 # Zoom+ and Zoom- in the tag scale it (with ImageMagick's convert).
 . $PLAN9/lib/acme.rc
 ifs=' 	
 '
 path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
 
+scale=100
+if(~ $1 -s){
+	scale=$2
+	shift 2
+}
 if(! ~ $#* 1){
-	echo 'usage: aimg file' >[1=2]
+	echo 'usage: aimg [-s percent] file' >[1=2]
 	exit usage
 }
 f=$1
@@ -17,7 +22,6 @@ if(! test -r $f){
 	echo aimg: $f: cannot read >[1=2]
 	exit open
 }
-scale=100
 
 # write the image at $scale% to the window
 fn render {
@@ -39,6 +43,8 @@ fn render {
 
 fn show {
 	render | winwrite image
+	# so Dump and Load bring the window back as it is
+	winctl dump aimg -s $scale $f
 }
 
 fn event {
@@ -65,6 +71,7 @@ fn event {
 
 newwindow
 winname $f
+winctl dumpdir /
 echo -n ' Zoom+ Zoom- ' | winwrite tag
 show
 winctl clean

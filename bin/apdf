@@ -1,5 +1,5 @@
 #!/usr/local/plan9/bin/rc
-# apdf file [page] - show a PDF in a macme window, a page at a time.
+# apdf [-r dpi] file [page] - show a PDF in a macme window, a page at a time.
 # Next, Prev and Zoom+ and Zoom- in the tag move and scale the pages.
 # Pages are rendered with mutool, pdftoppm, or gs, whichever is found.
 . $PLAN9/lib/acme.rc
@@ -7,8 +7,13 @@ ifs='
 '
 path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
 
+res=100
+if(~ $1 -r){
+	res=$2
+	shift 2
+}
 if(! ~ $#* 1 2){
-	echo 'usage: apdf file [page]' >[1=2]
+	echo 'usage: apdf [-r dpi] file [page]' >[1=2]
 	exit usage
 }
 f=$1
@@ -21,7 +26,6 @@ if(! test -r $f){
 page=1
 if(~ $#* 2)
 	page=$2
-res=100
 tmp=/tmp/apdf.$pid
 
 fn has {
@@ -49,6 +53,8 @@ fn render {
 	if not{
 		png -t $tmp.png | winwrite image
 		rm -f $tmp.png
+		# so Dump and Load bring the window back as it is
+		winctl dump apdf -r $res $f $page
 		status=''
 	}
 }
@@ -84,6 +90,7 @@ fn event {
 
 newwindow
 winname $f
+winctl dumpdir /
 echo -n ' Next Prev Zoom+ Zoom- ' | winwrite tag
 winctl clean
 if(! render){

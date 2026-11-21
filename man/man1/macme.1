@@ -8,12 +8,20 @@ macme, apdf, aimg \- acme with image windows
 ]
 .PP
 .B apdf
+[
+.B -r
+.I dpi
+]
 .I file
 [
 .I page
 ]
 .PP
 .B aimg
+[
+.B -s
+.I percent
+]
 .I file
 .SH DESCRIPTION
 .I Macme
@@ -80,6 +88,25 @@ shows an image file (PNG, JPEG and GIF with the
 .IR jpg (1)
 programs, others with ImageMagick's
 .IR convert ).
+.PP
+Both write
+.B dumpdir
+and
+.B dump
+to the window's
+.B ctl
+file (see
+.IR acme (4)),
+with the page, resolution or scale in use, so
+.B Dump
+and
+.B Load
+(or a restart with
+.BR -l )
+bring their windows back as they were.
+Other clients should do the same, as
+.I win
+does.
 .SH EXAMPLE
 Show an image computed by a program:
 .IP
