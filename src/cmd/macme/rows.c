@@ -478,10 +478,20 @@ rowclean(Row *row)
 	return clean;
 }
 
+// width of c, not hidden
+static int
+colwid(Column *c)
+{
+	if(c->hidden && c->savew > 0)
+		return c->savew;
+	return Dx(c->r);
+}
+
 static void
 rowdump1(Row *row, Biobuf *b)
 {
 	int i, j, m, n, start, dumped;
+	vlong x, tot;
 	uint q0, q1;
 	char *buf, *a, *fontname, *fontfmt, *fontnamelo, *fontnamehi;
 	Rune *r;
@@ -494,9 +504,17 @@ rowdump1(Row *row, Biobuf *b)
 	Bprint(b, "%s\n", wdir);
 	Bprint(b, "%s\n", fontnames[0]);
 	Bprint(b, "%s\n", fontnames[1]);
+	// nemo: hidden columns are dumped with the width they had
+	// before hiding, and marked with C instead of c below.
+	x = 0;
+	for(i=0; i<row->ncol; i++)
+		x += colwid(row->col[i]);
+	tot = x;
+	x = 0;
 	for(i=0; i<row->ncol; i++){
 		c = row->col[i];
-		Bprint(b, "%11.7f", 100.0*(c->r.min.x-row->r.min.x)/Dx(row->r));
+		Bprint(b, "%11.7f", 100.0*x/tot);
+		x += colwid(c);
 		if(i == row->ncol-1)
 			Bputc(b, '\n');
 		else
@@ -520,7 +538,7 @@ rowdump1(Row *row, Biobuf *b)
 		n = 0;
 		while(n<m && r[n]!='\n')
 			n++;
-		Bprint(b, "c%11d %.*S\n", i, n, r);
+		Bprint(b, "%c%11d %.*S\n", c->hidden ? 'C' : 'c', i, n, r);
 	}
 	for(i=0; i<row->ncol; i++){
 		c = row->col[i];
@@ -792,7 +810,7 @@ rowplace(Window *w)
 int
 rowload(Row *row, char *file, int initing)
 {
-	int i, j, line, y, nr, nfontr, n, ns, ndumped, dumpid, x, fd, done;
+	int i, j, line, y, nr, nfontr, n, ns, ndumped, dumpid, x, fd, done, hidden;
 	double percent;
 	Biobuf *b, *bout;
 	char *buf, *l, *t, *fontname;
@@ -847,6 +865,9 @@ rowload(Row *row, char *file, int initing)
 	j = Blinelen(b)/12;
 	if(j<=0 || j>10)
 		goto Rescue2;
+	for(i=0; i<row->ncol; i++)
+		row->col[i]->hidden = FALSE;
+	hidden = FALSE;
 	for(i=0; i<j; i++){
 		percent = atof(l+i*12);
 		if(percent<0 || percent>=100)
@@ -881,9 +902,16 @@ rowload(Row *row, char *file, int initing)
 		if(l == nil)
 			break;
 		switch(l[0]){
+		case 'C':	// nemo: hidden column
 		case 'c':
 			l[Blinelen(b)-1] = 0;
 			i = atoi(l+1+0*12);
+			if(i<0 || i>=row->ncol)
+				goto Rescue2;
+			if(l[0] == 'C'){
+				row->col[i]->hidden = TRUE;
+				hidden = TRUE;
+			}
 			r = bytetorune(l+1*12, &nr);
 			ns = -1;
 			for(n=0; n<nr; n++){
@@ -1076,6 +1104,12 @@ Nextline:
 	}
 	Bterm(b);
 	fbuffree(buf);
+	if(hidden){
+		for(i=0; i<row->ncol; i++)
+			if(row->col[i]->hidden)
+				row->col[i]->savew = Dx(row->col[i]->r);
+		rowlayout(row);
+	}
 	return TRUE;
 
 Rescue2:
