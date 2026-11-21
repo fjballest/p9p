@@ -1,0 +1,269 @@
+#!/usr/bin/env perl
+# awebcdp - drive a headless Chrome for aweb, through the
+# DevTools protocol on a pipe (--remote-debugging-pipe).
+#
+# awebcdp [-c cookies] [-s scale] [-w ms] -W width -H height -o png -b boxes url
+#	loads url in a page of width x height (CSS pixels), with the
+#	cookies in the file (if any), and writes a screenshot of it
+#	(scaled by scale) to png, and the links in the page to boxes,
+#	one per line as "x0 y0 x1 y1 url" (0 0 0 0 for links not shown).
+#	The cookies are saved back to the file. The final URL (after
+#	redirects) is printed on standard output.
+#
+# awebcdp -l [-c cookies] url
+#	opens url in a Chrome window, so the user may log in;
+#	the cookies are saved to the file until Chrome is quit.
+#
+# The browser is $AWEBCHROME, or Google Chrome, or chromium.
+
+use strict;
+use warnings;
+use JSON::PP;
+use POSIX qw(dup2 _exit WNOHANG);
+use IO::Handle;
+use Fcntl qw(F_SETFD);
+use File::Temp qw(tempdir);
+use MIME::Base64;
+use Getopt::Std;
+
+my %o;
+getopts('lc:s:w:W:H:o:b:', \%o) && @ARGV == 1 or die
+	"usage: awebcdp [-l] [-c cookies] [-s scale] [-w ms] [-W width -H height -o png -b boxes] url\n";
+my $url = $ARGV[0];
+my $login = $o{l};
+my $wait = $o{w} || 15000;
+my $json = JSON::PP->new->utf8->canonical;
+
+sub chromepath {
+	return $ENV{AWEBCHROME} if $ENV{AWEBCHROME};
+	my $mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+	return $mac if -x $mac;
+	for my $b (qw(google-chrome google-chrome-stable chromium chromium-browser)){
+		for my $d (split(/:/, $ENV{PATH}), qw(/opt/local/bin /opt/homebrew/bin /usr/local/bin)){
+			return "$d/$b" if -x "$d/$b";
+		}
+	}
+	die "awebcdp: no chrome or chromium\n";
+}
+
+my $prof = tempdir("/tmp/awebcdp.XXXXXX", CLEANUP => 1);
+pipe(my $cr, my $tochrome) or die "pipe: $!";
+pipe(my $fromchrome, my $cw) or die "pipe: $!";
+my @args = ("--remote-debugging-pipe", "--user-data-dir=$prof",
+	"--no-first-run", "--no-default-browser-check", "--disable-extensions",
+	"--disable-sync", "--mute-audio");
+push @args, "--headless", "--disable-gpu", "--hide-scrollbars",
+	"--disable-background-networking" unless $login;
+push @args, split(" ", $ENV{AWEBCHROMEFLAGS}) if $ENV{AWEBCHROMEFLAGS};
+my $pid = fork();
+die "fork: $!" unless defined $pid;
+if($pid == 0){
+	# out of the way first: the pipes may be 3 and 4 already
+	my $r = POSIX::dup(fileno($cr));
+	my $w = POSIX::dup(fileno($cw));
+	dup2($r, 3) or _exit(1);
+	dup2($w, 4) or _exit(1);
+	for my $fd (3, 4){
+		open(my $h, "+<&=", $fd) or _exit(1);
+		fcntl($h, F_SETFD, 0);
+	}
+	open(STDOUT, '>', '/dev/null');
+	open(STDIN, '<', '/dev/null');
+	exec(chromepath(), @args, "about:blank") or _exit(1);
+}
+close $cr;
+close $cw;
+$tochrome->autoflush(1);
+
+my $id = 0;
+my $buf = '';
+my @events;
+my $dead = 0;
+
+# read one message from chrome, waiting at most $t seconds
+sub readmsg {
+	my ($t) = @_;
+	my $end = time + $t;
+	for(;;){
+		if((my $i = index($buf, "\0")) >= 0){
+			my $m = substr($buf, 0, $i);
+			$buf = substr($buf, $i+1);
+			return $json->decode($m);
+		}
+		return undef if $dead;
+		my $left = $end - time;
+		return undef if $left <= 0;
+		my $rin = '';
+		vec($rin, fileno($fromchrome), 1) = 1;
+		my $n = select(my $rout = $rin, undef, undef, $left);
+		next if $n <= 0;
+		my $r = sysread($fromchrome, $buf, 65536, length $buf);
+		$dead = 1 unless $r;
+	}
+}
+
+sub send_ {
+	my ($session, $method, $params) = @_;
+	my $m = { id => ++$id, method => $method, params => $params || {} };
+	$m->{sessionId} = $session if $session;
+	local $SIG{PIPE} = 'IGNORE';
+	print $tochrome $json->encode($m), "\0" or $dead = 1;
+	return $id;
+}
+
+# call a method and wait for its result
+sub call {
+	my ($session, $method, $params, $t) = @_;
+	my $n = send_($session, $method, $params);
+	for(;;){
+		my $m = readmsg($t || 30);
+		die "awebcdp: $method: no answer from chrome\n" unless $m;
+		if(defined $m->{id} && $m->{id} == $n){
+			die "awebcdp: $method: $m->{error}{message}\n" if $m->{error};
+			return $m->{result};
+		}
+		push @events, $m if $m->{method};
+	}
+}
+
+# wait for an event, for at most $t seconds
+sub event {
+	my ($session, $name, $t) = @_;
+	my $end = time + $t;
+	for(;;){
+		for my $i (0..$#events){
+			my $e = $events[$i];
+			if($e->{method} eq $name && (!$session || ($e->{sessionId} || '') eq $session)){
+				splice(@events, $i, 1);
+				return $e;
+			}
+		}
+		my $left = $end - time;
+		return undef if $left <= 0;
+		my $m = readmsg($left);
+		return undef unless $m;
+		push @events, $m if $m->{method};
+	}
+}
+
+sub loadcookies {
+	return [] unless $o{c} && -s $o{c};
+	open(my $f, '<', $o{c}) or return [];
+	local $/;
+	my $c = eval { $json->decode(<$f>) };
+	return ref($c) eq 'ARRAY' ? $c : [];
+}
+
+sub savecookies {
+	my ($c) = @_;
+	return unless $o{c} && $c;
+	my $old = umask 077;
+	if(open(my $f, '>', "$o{c}.new")){
+		print $f $json->encode($c);
+		close $f;
+		rename("$o{c}.new", $o{c});
+	}
+	umask $old;
+}
+
+# the cookies, in a form Storage.setCookies takes back
+sub getcookies {
+	my $r = eval { call(undef, 'Storage.getCookies', {}, 5) };
+	return undef unless $r;
+	my @c;
+	for my $k (@{$r->{cookies}}){
+		my %c = map { exists $k->{$_} ? ($_ => $k->{$_}) : () }
+			qw(name value domain path secure httpOnly sameSite expires priority sameParty sourceScheme sourcePort partitionKey);
+		# keep session cookies: they would be lost otherwise
+		delete $c{expires} if $k->{session} || ($c{expires} // 0) < 0;
+		push @c, \%c;
+	}
+	return \@c;
+}
+
+sub quit {
+	eval { send_(undef, 'Browser.close') };
+	my $t = time + 5;
+	while(time < $t){
+		last if waitpid($pid, WNOHANG) != 0;
+		select(undef, undef, undef, 0.1);
+	}
+	kill('KILL', $pid) if waitpid($pid, WNOHANG) == 0;
+}
+
+$SIG{ALRM} = sub { kill('KILL', $pid); die "awebcdp: timeout\n" };
+alarm(60) unless $login;
+
+my $cookies = loadcookies();
+call(undef, 'Storage.setCookies', { cookies => $cookies }) if @$cookies;
+
+my $t = call(undef, 'Target.createTarget', { url => 'about:blank' });
+my $s = call(undef, 'Target.attachToTarget', { targetId => $t->{targetId}, flatten => JSON::PP::true })->{sessionId};
+
+if($login){
+	call($s, 'Page.navigate', { url => $url });
+	# save the cookies now and then, until chrome is gone
+	until($dead){
+		my $end = time + 2;
+		while(!$dead && time < $end){
+			my $m = readmsg($end - time);
+			last unless $m;
+		}
+		last if $dead;
+		my $c = getcookies();
+		savecookies($c) if $c;
+	}
+	waitpid($pid, 0);
+	exit 0;
+}
+
+defined $o{$_} or die "awebcdp: -$_ needed\n" for qw(W H o b);
+my $scale = $o{s} || 1;
+call($s, 'Page.enable');
+call($s, 'Emulation.setDeviceMetricsOverride', {
+	width => int($o{W}), height => int($o{H}),
+	deviceScaleFactor => $scale + 0, mobile => JSON::PP::false });
+my $nav = call($s, 'Page.navigate', { url => $url });
+warn "awebcdp: $url: $nav->{errorText}\n" if $nav->{errorText};
+# pages that take long to load are shown as they are after the wait
+event($s, 'Page.loadEventFired', $wait/1000);
+select(undef, undef, undef, 0.5);
+
+my $js = <<'EOF';
+(function(){
+	var o = [];
+	document.querySelectorAll("a[href], area[href]").forEach(function(a){
+		var rs = a.getClientRects(), shown = 0;
+		for(var i = 0; i < rs.length; i++){
+			var r = rs[i];
+			if(r.width > 0 && r.height > 0){
+				o.push([Math.round(r.left+scrollX), Math.round(r.top+scrollY),
+					Math.round(r.right+scrollX), Math.round(r.bottom+scrollY), a.href].join(" "));
+				shown = 1;
+			}
+		}
+		if(!shown)
+			o.push(["0 0 0 0", a.href].join(" "));
+	});
+	return location.href + "\n" + o.join("\n") + "\n";
+})()
+EOF
+my $r = call($s, 'Runtime.evaluate', { expression => $js, returnByValue => JSON::PP::true });
+my $v = $r->{result}{value} // "$url\n";
+my ($final, $boxes) = split(/\n/, $v, 2);
+open(my $bf, '>', $o{b}) or die "awebcdp: $o{b}: $!\n";
+binmode($bf, ':utf8');
+print $bf $boxes // '';
+close $bf;
+
+my $shot = call($s, 'Page.captureScreenshot', { format => 'png' });
+open(my $pf, '>', $o{o}) or die "awebcdp: $o{o}: $!\n";
+binmode $pf;
+print $pf decode_base64($shot->{data});
+close $pf;
+
+savecookies(getcookies()) if $o{c};
+binmode(STDOUT, ':utf8');
+print "$final\n";
+quit();
+exit 0;

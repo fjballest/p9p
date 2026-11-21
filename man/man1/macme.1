@@ -26,6 +26,9 @@ macme, apdf, aimg, aweb, apascdb \- acme with image windows
 .PP
 .B aweb
 [
+.B -l
+]
+[
 .B -h
 .I height
 ]
@@ -181,6 +184,20 @@ doubles the height, and
 and
 .B Zoom-
 scale the page.
+Chrome is driven through its DevTools protocol by
+.IR awebcdp ,
+which loads the page itself (with its scripts and redirections)
+and keeps the cookies in
+.BR $home/lib/aweb/cookies ,
+so logins last.
+Pages cannot be typed into: to log in to a site,
+.B Login
+(or option
+.BR -l )
+opens the page in a Chrome window, where the cookies are saved
+until that Chrome is quit; then
+.B Reload
+shows the page logged in.
 .PP
 .I Apascdb
 runs a program of the
@@ -322,6 +339,8 @@ plot ... | topng | png -t | winwrite image
 .B \*9/bin/aimg
 .br
 .B \*9/bin/aweb
+.br
+.B \*9/bin/awebcdp
 .br
 .B \*9/bin/apascdb
 .SH SEE ALSO
