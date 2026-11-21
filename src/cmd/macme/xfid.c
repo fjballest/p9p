@@ -702,6 +702,20 @@ xfidctlwrite(Xfid *x, Window *w)
 			w->pagekeys = TRUE;
 			m = 8;
 		}else
+		if(strncmp(p, "place ", 6) == 0){	// macme: move to column n at percent
+			pp = p+6;
+			m = 6;
+			q = memchr(pp, '\n', e-pp);
+			if(q == nil){
+				err = Ebadctl;
+				break;
+			}
+			*q = 0;
+			i = strtol(pp, &pp, 10);
+			if((err = rowmove(w, i, strtod(pp, nil))) != nil)
+				break;
+			m += (q+1) - (p+6);
+		}else
 		if(strncmp(p, "clean", 5) == 0){	/* mark window 'clean', seq=0 */
 			t = &w->body;
 			t->eq0 = ~0;

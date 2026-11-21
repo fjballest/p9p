@@ -1,0 +1,1165 @@
+#!/usr/bin/env python3
+# apascdb [-g] [-L] [-w] prog.p - run pascdb with its views in acme windows.
+#
+# apascdb starts pascdb (from the pasc compiler) without a browser and
+# drives it through its HTTP API.  Each view of pascdb gets its own
+# acme (or macme) window: the source, with the line about to run and the
+# breakpoints; the data (frames, globals and heap); the stack; the
+# memory; the input files; and the program's output, where typing
+# sends lines to the program.  In macme, Pict in a view's tag shows the
+# browser's own drawing of that view (boxes and arrows) in the window
+# image, rendered by a headless Chrome; Text goes back to text.
+# See macme(1).
+
+import json
+import os
+import pwd
+import re
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import signal
+import urllib.parse
+import urllib.request
+
+DEBUG = os.environ.get('apascdbdebug')
+
+# --- 9P, just enough to talk to acme
+
+NOFID = 0xffffffff
+NOTAG = 0xffff
+OREAD, OWRITE, ORDWR = 0, 1, 2
+
+
+class P9Error(Exception):
+	pass
+
+
+class Conn:
+	"""A 9P connection to acme.  Calls are serialized: use one
+	connection for each reader that blocks (event files)."""
+
+	def __init__(self, addr):
+		self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+		self.sock.connect(addr)
+		self.lock = threading.Lock()
+		self.nextfid = 1
+		self.msize = 8192
+		m = self.rpc(100, struct.pack('<I', self.msize) + pstr('9P2000'))
+		self.msize = min(self.msize, struct.unpack_from('<I', m)[0])
+		self.root = self.newfid()
+		user = os.environ.get('USER') or pwd.getpwuid(os.getuid()).pw_name	# acme checks it
+		self.rpc(104, struct.pack('<II', self.root, NOFID) + pstr(user) + pstr(''))
+
+	def newfid(self):
+		with self.lock:
+			f = self.nextfid
+			self.nextfid += 1
+			return f
+
+	def recvn(self, n):
+		b = b''
+		while len(b) < n:
+			c = self.sock.recv(n - len(b))
+			if not c:
+				raise P9Error('acme hung up')
+			b += c
+		return b
+
+	def rpc(self, typ, body):
+		with self.lock:
+			tag = NOTAG if typ == 100 else 1
+			self.sock.sendall(struct.pack('<IBH', 7 + len(body), typ, tag) + body)
+			size, rtyp, _ = struct.unpack('<IBH', self.recvn(7))
+			m = self.recvn(size - 7)
+		if rtyp == 107:
+			n = struct.unpack_from('<H', m)[0]
+			raise P9Error(m[2:2 + n].decode('utf-8', 'replace'))
+		if rtyp != typ + 1:
+			raise P9Error('9P: unexpected reply %d' % rtyp)
+		return m
+
+	def open(self, path, mode):
+		fid = self.newfid()
+		names = [n for n in path.split('/') if n]
+		self.rpc(110, struct.pack('<IIH', self.root, fid, len(names)) + b''.join(pstr(n) for n in names))
+		try:
+			self.rpc(112, struct.pack('<IB', fid, mode))
+		except P9Error:
+			self.clunk(fid)
+			raise
+		return Fid(self, fid)
+
+	def clunk(self, fid):
+		try:
+			self.rpc(120, struct.pack('<I', fid))
+		except (P9Error, OSError):
+			pass
+
+
+def pstr(s):
+	b = s.encode('utf-8')
+	return struct.pack('<H', len(b)) + b
+
+
+class Fid:
+	def __init__(self, conn, fid):
+		self.conn = conn
+		self.fid = fid
+		self.offset = 0
+
+	def read(self, n=None):
+		n = min(n or self.conn.msize - 24, self.conn.msize - 24)
+		m = self.conn.rpc(116, struct.pack('<IQI', self.fid, self.offset, n))
+		cnt = struct.unpack_from('<I', m)[0]
+		self.offset += cnt
+		return m[4:4 + cnt]
+
+	def readall(self):
+		out = b''
+		while True:
+			b = self.read()
+			if not b:
+				return out
+			out += b
+
+	def write(self, data):
+		if isinstance(data, str):
+			data = data.encode('utf-8')
+		max = self.conn.msize - 24
+		i = 0
+		while True:
+			chunk = data[i:i + max]
+			self.conn.rpc(118, struct.pack('<IQI', self.fid, self.offset, len(chunk)) + chunk)
+			self.offset += len(chunk)
+			i += len(chunk)
+			if i >= len(data):
+				return
+
+	def close(self):
+		self.conn.clunk(self.fid)
+
+
+def acmeaddr():
+	ns = os.environ.get('NAMESPACE')
+	if not ns:
+		try:
+			ns = subprocess.run(['namespace'], stdout=subprocess.PIPE, text=True).stdout.strip()
+		except OSError:
+			ns = ''
+	if not ns:
+		sys.exit('apascdb: no name space (is plan9port in $PATH?)')
+	return os.path.join(ns, 'acme')
+
+
+# --- acme windows
+
+class Event:
+	def __init__(self, c1, c2, q0, q1, flag, text):
+		self.c1, self.c2, self.q0, self.q1, self.flag, self.text = c1, c2, q0, q1, flag, text
+		self.arg = ''
+		self.loc = ''
+
+	def raw(self):
+		return '%s%s%d %d \n' % (self.c1, self.c2, self.q0, self.q1)
+
+
+class Win:
+	def __init__(self, addr, conn):
+		self.conn = conn
+		self.ctlf = conn.open('new/ctl', ORDWR)
+		self.id = int(self.ctlf.read().split()[0])
+		self.addrf = conn.open('%d/addr' % self.id, ORDWR)	# kept open: acme resets addr on open
+		self.dataf = conn.open('%d/data' % self.id, ORDWR)
+		self.econn = Conn(addr)
+		self.eventf = self.econn.open('%d/event' % self.id, ORDWR)
+		self.ebuf = b''
+		self.closed = False
+		self.lock = threading.RLock()	# for addr then data
+
+	def ctl(self, msg):
+		self.ctlf.write(msg + '\n')
+
+	def name(self, name):
+		self.ctl('name ' + name)
+
+	def tag(self, text):
+		f = self.conn.open('%d/tag' % self.id, OWRITE)
+		f.write(text)
+		f.close()
+
+	def setaddr(self, a):
+		self.addrf.write(a)
+
+	def replace(self, a, text):
+		"""Replace the text at address a with text."""
+		with self.lock:
+			self.setaddr(a)
+			self.dataf.offset = 0
+			self.dataf.write(text)
+
+	def addrf_read(self):
+		self.addrf.offset = 0
+		return self.addrf.read().decode()
+
+	def dot(self):
+		with self.lock:
+			self.ctl('addr=dot')
+			return [int(x) for x in self.addrf_read().split()[:2]]
+
+	def body(self):
+		f = self.conn.open('%d/body' % self.id, OREAD)
+		b = f.readall()
+		f.close()
+		return b.decode('utf-8', 'replace')
+
+	def show(self, a):
+		with self.lock:
+			self.setaddr(a)
+			self.ctl('dot=addr')
+			self.ctl('show')
+
+	def image(self, data):
+		f = self.conn.open('%d/image' % self.id, OWRITE)
+		f.write(data)
+		f.close()
+
+	def imagesize(self):
+		f = self.conn.open('%d/image' % self.id, OREAD)
+		b = f.read()
+		f.close()
+		return [int(x) for x in b.split()]
+
+	# events, as in acmeevent(1)
+	def getc(self):
+		while not self.ebuf:
+			self.ebuf = self.eventf.read()
+			if not self.ebuf:
+				raise P9Error('eof on event file')
+		c = self.ebuf[0:1]
+		self.ebuf = self.ebuf[1:]
+		return c
+
+	def getn(self):
+		n = 0
+		while True:
+			c = self.getc()
+			if not c.isdigit():
+				return n
+			n = n * 10 + int(c)
+
+	def getrunes(self, n):
+		b = b''
+		while len(b.decode('utf-8', 'ignore')) < n or not utf8full(b):
+			b += self.getc()
+		return b.decode('utf-8', 'replace')
+
+	def event1(self):
+		c1 = self.getc().decode()
+		c2 = self.getc().decode()
+		q0 = self.getn()
+		q1 = self.getn()
+		flag = self.getn()
+		n = self.getn()
+		text = self.getrunes(n) if n else ''
+		self.getc()		# newline
+		return Event(c1, c2, q0, q1, flag, text)
+
+	def event(self):
+		e = self.event1()
+		if e.flag & 2:		# expansion: the original event follows
+			e2 = self.event1()
+			if not e.text:
+				e.text = e2.text
+		if e.flag & 8:		# chorded argument and its location
+			e.arg = self.event1().text
+			e.loc = self.event1().text
+		return e
+
+	def writeevent(self, e):
+		self.eventf.write(e.raw())
+
+	def delete(self):
+		if self.closed:
+			return
+		self.closed = True
+		try:
+			self.ctl('delete')
+		except P9Error:
+			pass
+
+
+def utf8full(b):
+	try:
+		b.decode('utf-8')
+		return True
+	except UnicodeDecodeError:
+		return False
+
+
+# --- pascdb
+
+class Pascdb:
+	def __init__(self, args):
+		cmd = os.environ.get('pascdb', 'pascdb').split()
+		try:
+			self.proc = subprocess.Popen(cmd + ['--no-browser'] + args,
+				stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+		except OSError as e:
+			sys.exit('apascdb: %s: %s' % (cmd[0], e.strerror))
+		for line in self.proc.stdout:
+			m = re.search(r'(http://127\.0\.0\.1:\d+)/\?t=(\w+)', line)
+			if m:
+				self.base, self.token = m.group(1), m.group(2)
+				break
+		else:
+			sys.stderr.write(self.proc.stderr.read())
+			sys.exit(1)
+		self.warnings = ''
+		threading.Thread(target=self.drain, daemon=True).start()
+
+	def drain(self):
+		for line in self.proc.stderr:		# warnings, messages
+			self.warnings += line
+		for line in self.proc.stdout:
+			pass
+
+	def url(self, path, **q):
+		q['t'] = self.token
+		return '%s/%s?%s' % (self.base, path, urllib.parse.urlencode(q))
+
+	def get(self, path, timeout=10, **q):
+		with urllib.request.urlopen(self.url('api/' + path, **q), timeout=timeout) as r:
+			return json.loads(r.read())
+
+	def quit(self):
+		try:
+			self.get('quit', timeout=2)
+		except Exception:
+			pass
+		try:
+			self.proc.wait(3)
+		except subprocess.TimeoutExpired:
+			self.proc.kill()
+
+
+def hx(a):
+	return '0x%x' % a
+
+
+def kindtext(k):
+	return {'var param': 'var', 'param': '', 'local': '', 'global': '', 'result': 'result'}.get(k, k)
+
+
+def frametitle(f):
+	if f['kind'] == 'program':
+		return 'program'
+	return '%s %s' % (f['kind'], f['routine'])
+
+
+# --- the text views
+
+def valtext(v):
+	"""A short text for a scalar, string, pointer or file value."""
+	k = v.get('k')
+	if k == 'bad':
+		return '<bad address %s>' % hx(v['a'])
+	if k == 'file':
+		mode = v.get('mode', '')
+		return '%s (%s)' % (v['v'], mode) if v['v'] else mode
+	if k == 'ptr':
+		if v['p'] == 0:
+			return 'nil'
+		t = '-> ' + hx(v['p'])
+		return t if v['st'] in ('heap', 'mem') else t + ' (' + v['st'] + ')'
+	if k == 'str':
+		t = v['v']
+		if len(t) > 60:
+			t = t[:60] + '...'
+		return t
+	t = v.get('v', '?')
+	if v.get('g'):
+		t += ' ?'		# garbage
+	return t
+
+
+def simple(v):
+	return v.get('k') not in ('array', 'record')
+
+
+def valuelines(name, v, ind, out):
+	k = v.get('k')
+	if simple(v):
+		out.append('%s%s = %s' % (ind, name, valtext(v)))
+	elif k == 'array':
+		items = v['items']
+		if items and all(simple(it['v']) for it in items):
+			t = ', '.join(valtext(it['v']) for it in items)
+			if v['more']:
+				t += ', ... (%d more)' % v['more']
+			if len(t) < 64:
+				out.append('%s%s = (%s)' % (ind, name, t))
+				return
+		out.append('%s%s: %s' % (ind, name, v['t']))
+		for it in items:
+			valuelines('[%s]' % it['i'], it['v'], ind + '\t', out)
+		if v['more']:
+			out.append('%s\t... %d more' % (ind, v['more']))
+	else:
+		out.append('%s%s: %s' % (ind, name, v['t']))
+		for f in v['f']:
+			valuelines(f['n'], f['v'], ind + '\t', out)
+
+
+def varlines(x, ind, out):
+	if x.get('ref'):
+		w = x.get('targetwhere')
+		out.append('%s%s: var %s -> %s%s' % (ind, x['n'], x['v']['t'], x.get('target', '?'),
+			'' if w in ('', None) else ' (%s)' % wheretext(w)))
+		return
+	k = kindtext(x.get('kind', ''))
+	valuelines(x['n'] + (' (%s)' % k if k else ''), x['v'], ind, out)
+
+
+SNAP = None	# the snapshot being rendered, for wheretext
+
+
+def wheretext(w):
+	if w == 'global':
+		return 'global'
+	if w == 'heap':
+		return 'heap'
+	if isinstance(w, int) and SNAP and w < len(SNAP['frames']):
+		return frametitle(SNAP['frames'][w])
+	return ''
+
+
+def heaporder(s):
+	"""Heap blocks in the order pointers reach them, as the page does."""
+	bya = {h['a']: h for h in s['heap']}
+	out, seen = [], set()
+
+	def ptrs(v):
+		if v.get('k') == 'ptr' and v['p'] in bya:
+			yield v['p']
+		for f in v.get('f', []):
+			yield from ptrs(f['v'])
+		for it in v.get('items', []):
+			yield from ptrs(it['v'])
+
+	def visit(a):
+		if a in seen:
+			return
+		seen.add(a)
+		out.append(bya[a])
+		for p in ptrs(bya[a]['v']):
+			visit(p)
+
+	roots = []
+	for f in s['frames']:
+		for x in f['vars']:
+			if not x.get('ref'):
+				roots.append(x['v'])
+	roots += [x['v'] for x in s['globals']]
+	for r in roots:
+		for p in ptrs(r):
+			visit(p)
+	for h in s['heap']:
+		visit(h['a'])
+	return out
+
+
+def datatext(st):
+	s = st.get('snap')
+	if not s:
+		return ['The program has ended.' if st['status'] == 'finished' else 'Step to start.']
+	global SNAP
+	SNAP = s
+	out = []
+	if s.get('final'):
+		out.append('The program has ended')
+		out.append('')
+	for f in s['frames']:
+		out.append('%s (line %d)' % (frametitle(f), f['line']))
+		if not f['vars']:
+			out.append('\tno variables')
+		for x in f['vars']:
+			varlines(x, '\t', out)
+		out.append('')
+	if s['globals']:
+		out.append('globals')
+		for x in s['globals']:
+			varlines(x, '\t', out)
+		out.append('')
+	if s['heap']:
+		out.append('heap (new)')
+		for h in heaporder(s):
+			out.append('\t%s: ^%s (new at line %d)' % (hx(h['a']), h['t'], h['line']))
+			v = h['v']
+			if v.get('k') == 'record':
+				for f in v['f']:
+					valuelines(f['n'], f['v'], '\t\t', out)
+			else:
+				valuelines('^', v, '\t\t', out)
+	return out
+
+
+def spaced(h, n=16):
+	b = [h[i:i + 2] for i in range(0, len(h), 2)]
+	t = ' '.join(b[:n])
+	return t + (' ...' if len(b) > n else '')
+
+
+def stacktext(st):
+	s = st.get('snap')
+	if not s or s.get('final'):
+		return ['No stack: the program is not stopped.']
+	out = ['The stack grows towards higher addresses: the running call is on top.', '']
+	out.append('%-10s %5s  %-28s %-24s %s' % ('address', 'bytes', 'contents', 'value', 'bytes in memory'))
+	for f in s['frames']:
+		out.append('%s: frame at %s, %d bytes, at line %d' % (frametitle(f), hx(f['fp']), f['size'], f['line']))
+		for sl in sorted(f['slots'], key=lambda x: -x['a']):
+			what = sl['n']
+			k = kindtext(sl.get('kind', ''))
+			if k:
+				what += ' (%s)' % k
+			if sl.get('addr'):
+				what += ' (address)'
+			out.append('%-10s %5d  %-28s %-24s %s' % (hx(sl['a']), sl['s'], what, sl.get('v', ''), spaced(sl.get('hex', ''))))
+		if f.get('ret'):
+			r = f['ret']
+			out.append('%-10s %5d  %-28s %s' % (hx(r['a'] + 8), 8, 'caller frame (saved fp)', hx(r['savedfp'])))
+			out.append('%-10s %5d  %-28s %s' % (hx(r['a']), 8, 'return address', 'pc %d (line %d)' % (r['pc'], r['line'])))
+		out.append('')
+	return out
+
+
+def filestext(st):
+	s = st.get('snap')
+	if not s or not s.get('files'):
+		return ['No input files open.']
+	out = []
+	for f in s['files']:
+		out.append('%s%s: read %d of %d bytes' % (f['name'], ' (standard input)' if f['std'] else '',
+			f['pos'], f['size']))
+		t = f['text']
+		p = f['pos'] - f['start']
+		out += ('\t' + l for l in (t[:p] + '‸' + t[p:]).split('\n'))
+		if f['more']:
+			out.append('\t...')
+		out.append('')
+	return out
+
+
+def memtext(st, db):
+	s = st.get('snap')
+	if not s:
+		return ['No memory to show.']
+	names = {}
+
+	def name(a, n):
+		names.setdefault(a, []).append(n)
+	for g in s.get('gslots', []):
+		name(g['a'], g['n'])
+	for f in s.get('frames', []):
+		for sl in f['slots']:
+			name(sl['a'], sl['n'])
+		if f.get('ret'):
+			name(f['ret']['a'], 'ret ' + f['routine'])
+	for h in s['heap']:
+		name(h['a'], '^' + h['t'])
+	reg = s['regions']
+	sp = reg['sp']
+	ranges = [(reg['used'][0], reg['used'][1], 'globals and stack')]
+	for h in s['heap']:
+		ranges.append((h['a'], h['a'] + h['s'], 'heap: ^%s, new at line %d' % (h['t'], h['line'])))
+	out = ['Bytes from %s on are above the stack pointer (free stack).' % hx(sp), '']
+	for lo, hi, what in ranges:
+		out.append('%s' % what)
+		lo &= ~15
+		data = b''
+		a = lo
+		while a < hi:
+			n = min(4096, hi - a)
+			try:
+				m = db.get('mem', addr=a, len=n)
+			except Exception:
+				break
+			data += bytes.fromhex(m['hex'])
+			a += n
+		spshown = False
+		for a in range(lo, lo + len(data), 16):
+			if not spshown and a + 16 > sp and lo <= sp < hi:
+				if a < sp:
+					pass
+				else:
+					out.append('---- stack pointer ----')
+				spshown = True
+			row = data[a - lo:a - lo + 16]
+			hexs = ' '.join('%02x' % b for b in row)
+			asc = ''.join(chr(b) if 32 <= b < 127 else '.' for b in row)
+			lab = []
+			for i in range(16):
+				lab += names.get(a + i, [])
+			out.append('%08x  %-47s  %-16s  %s' % (a, hexs, asc, ' '.join(lab)))
+		out.append('')
+	return out
+
+
+# --- the windows
+
+CTLS = 'Step Play Pause Cont Restart Quit'
+
+
+class View:
+	"""An acme window showing one of pascdb's views."""
+	kind = None		# for the page's view=, if it can be drawn as a picture
+	suffix = ''
+	tagtext = ''
+	place = None		# macme column (from the right if < 0) and percent down
+
+	def __init__(self, app):
+		self.app = app
+		self.win = Win(app.addr, app.conn)
+		self.win.name('%s+%s' % (app.path, self.suffix))
+		self.win.ctl('dumpdir ' + app.dir)
+		self.win.tag(' ' + CTLS + ' ' + self.tagtext + ' ')
+		self.lines = None
+		self.pict = False
+		self.rendering = False
+		self.again = False
+		self.version = None
+		threading.Thread(target=self.events, daemon=True).start()
+
+	def doplace(self, end=False):
+		if self.place:
+			try:
+				self.win.ctl('place %d %d' % (self.place[0], -1 if end else self.place[1]))
+			except P9Error:
+				pass		# acme, not macme
+
+	def update(self, st):
+		self.version = st['version']
+		if self.pict:
+			self.picture()
+			return
+		try:
+			lines = self.text(st)
+		except Exception as e:
+			lines = ['apascdb: %s' % e]
+		if lines == self.lines:
+			return
+		old = self.lines or []
+		self.lines = lines
+		self.win.replace(',', '\n'.join(lines) + '\n')
+		# show the first line that changed, as the page scrolls to changes
+		for i, l in enumerate(lines):
+			if i >= len(old) or old[i] != l:
+				if old:
+					self.win.show('%d' % (i + 1))
+				break
+		else:
+			self.win.show('0')
+		self.win.ctl('clean')
+
+	def text(self, st):
+		return []
+
+	# the page's own drawing of the view, in the window image (macme)
+	def picture(self):
+		with self.app.lock:
+			if self.rendering:
+				self.again = True
+				return
+			self.rendering = True
+		threading.Thread(target=self.render, daemon=True).start()
+
+	def render(self):
+		while True:
+			self.again = False
+			err = self.app.chrome.shot(self.win, self.kind)
+			if err:
+				self.app.error('apascdb: %s' % err)
+				self.pict = False
+				self.lines = None
+				try:
+					self.win.ctl('noimage')
+				except P9Error:
+					pass
+				if self.app.state:
+					self.update(self.app.state)
+			with self.app.lock:
+				if not self.again or not self.pict:
+					self.rendering = False
+					return
+
+	def events(self):
+		w = self.win
+		try:
+			while True:
+				e = w.event()
+				if DEBUG:
+					sys.stderr.write('%s: event %s%s %d %d %r %r\n' % (self.suffix, e.c1, e.c2, e.q0, e.q1, e.text, e.arg))
+				if e.c2 in 'xX':
+					if not self.execute(e):
+						w.writeevent(e)
+				elif e.c2 in 'lL':
+					if not self.look(e):
+						w.writeevent(e)
+				elif e.c1 in 'KM' and e.c2 in 'ID':
+					self.typed(e)
+				elif e.c2 == 'I' and e.c1 == 'M':
+					pass		# a click on the image
+		except (P9Error, OSError):
+			pass
+		w.closed = True
+		self.app.gone(self)
+
+	def look(self, e):
+		return False
+
+	def typed(self, e):
+		pass
+
+	def execute(self, e):
+		cmd = e.text.strip()
+		arg = e.arg.strip()
+		if ' ' in cmd:
+			cmd, arg = cmd.split(None, 1)
+		db = self.app
+		if cmd == 'Del':
+			if self is db.source:
+				db.quit()
+			else:
+				self.win.delete()
+			return True
+		if cmd == 'Quit':
+			db.quit()
+			return True
+		m = {'Step': 'step', 'Play': 'play', 'Pause': 'pause', 'Cont': 'run'}
+		if cmd in m:
+			db.cmd(m[cmd])
+			return True
+		if cmd == 'Restart':
+			db.restart()
+			return True
+		if cmd == 'Speed':
+			try:
+				db.cmd('speed', delay=float(arg))
+			except ValueError:
+				db.error('apascdb: Speed seconds')
+			return True
+		if cmd == 'Pict' and self.kind:
+			if not self.app.chrome.ok():
+				db.error('apascdb: Pict needs Chrome or Chromium (or $browser)')
+				return True
+			self.pict = True
+			if db.state:
+				self.update(db.state)
+			return True
+		if cmd == 'Text' and self.kind:
+			self.pict = False
+			self.lines = None
+			self.win.ctl('noimage')
+			if db.state:
+				self.update(db.state)
+			return True
+		if cmd in VIEWS and self is db.source:
+			db.open(cmd)
+			return True
+		return False
+
+
+class SourceView(View):
+	suffix = 'pascdb'
+	place = (-2, 0)
+	tagtext = 'Break Speed Data Stack Mem Files Out'
+
+	def __init__(self, app, src):
+		self.src = src
+		super().__init__(app)
+		self.win.ctl('dump apascdb ' + ' '.join(app.args))
+		self.cur = None
+		self.breaks = set()
+		self.status = None
+		self.win.replace(',', '#\n' + ''.join(self.line(i) + '\n' for i in range(len(src))))
+		self.win.ctl('clean')
+
+	def line(self, i):
+		n = i + 1
+		return '%s%s%4d  %s' % ('*' if n in self.breaks else ' ', '>' if n == self.cur else ' ', n, self.src[i])
+
+	def setline(self, n):
+		if 1 <= n <= len(self.src):
+			self.win.replace('%d' % (n + 1), self.line(n - 1) + '\n')
+
+	def update(self, st):
+		s = st.get('snap')
+		cur = s['line'] if s and st['status'] != 'finished' else None
+		breaks = set(st['breaks'])
+		status = statustext(st)
+		if status != self.status:
+			self.status = status
+			self.win.replace('1', status + '\n')
+		changed = (breaks ^ self.breaks) | {self.cur, cur}
+		self.cur, self.breaks = cur, breaks
+		for n in sorted(x for x in changed if x):
+			self.setline(n)
+		if cur and st['version'] != self.version:
+			self.win.show('%d' % (cur + 1))
+		self.version = st['version']
+		self.win.ctl('clean')
+
+	def execute(self, e):
+		cmd = e.text.strip()
+		if cmd == 'Break':
+			self.breakdot()
+			return True
+		if re.fullmatch(r'\d+', cmd) and e.c1 == 'M':
+			# button 2 on a line number
+			self.app.cmd('break', line=int(cmd))
+			return True
+		return super().execute(e)
+
+	def breakdot(self):
+		q0, q1 = self.win.dot()
+		body = self.win.body()
+		n = body[:q0].count('\n')		# line 0 is the status
+		if n >= 1:
+			self.app.cmd('break', line=n)
+
+
+def statustext(st):
+	s = st.get('snap')
+	names = {'paused': 'paused', 'running': 'running', 'input': 'waiting for input',
+		'finished': 'finished', 'starting': 'starting'}
+	t = names.get(st['status'], st['status'])
+	if s and st['status'] != 'finished':
+		t += ' at line %d, column %d' % (s['line'], s['col'])
+	if st['status'] == 'finished':
+		t += ', exit status %s' % st['exitcode']
+	if st['mode'] == 'play':
+		t += ', playing every %.2fs' % st['delay']
+	if st['breaks']:
+		t += '; breakpoints at ' + ' '.join(str(b) for b in st['breaks'])
+	return '# ' + t
+
+
+class DataView(View):
+	kind = 'data'
+	place = (-1, 0)
+	suffix = 'data'
+	tagtext = 'Pict Text'
+
+	def text(self, st):
+		return datatext(st)
+
+	def look(self, e):
+		# button 3 on an address goes to the heap block it points to
+		t = e.text.strip()
+		if re.fullmatch(r'0x[0-9a-f]+', t) and self.lines:
+			for i, l in enumerate(self.lines):
+				if l.lstrip('\t').startswith(t + ':'):
+					self.win.show('%d' % (i + 1))
+					return True
+		return False
+
+
+class StackView(View):
+	kind = 'stack'
+	place = (-1, 50)
+	suffix = 'stack'
+	tagtext = 'Pict Text'
+
+	def text(self, st):
+		return stacktext(st)
+
+
+class MemView(View):
+	kind = 'mem'
+	place = (-1, 75)
+	suffix = 'mem'
+	tagtext = 'Pict Text'
+
+	def text(self, st):
+		return memtext(st, self.app.db)
+
+
+class FilesView(View):
+	kind = 'files'
+	place = (-1, 85)
+	suffix = 'files'
+	tagtext = 'Pict Text'
+
+	def text(self, st):
+		return filestext(st)
+
+
+class OutView(View):
+	"""The program's output; lines typed at the end go to its input."""
+	place = (-2, 70)
+	suffix = 'out'
+	tagtext = 'EOF'
+
+	def __init__(self, app):
+		super().__init__(app)
+		self.hostpt = 0		# end of the output, in runes
+		self.shown = 0		# characters of st['output'] already shown
+		self.nmsg = 0
+		self.echo = []		# lines sent, that come back in the output
+		self.typing = threading.Lock()
+
+	def reset(self):
+		self.hostpt = self.shown = self.nmsg = 0
+		self.echo = []
+		self.win.replace(',', '')
+
+	def put(self, t):
+		if not t:
+			return
+		self.win.replace('#%d' % self.hostpt, t)
+		self.hostpt += len(t)
+		self.win.show('#%d' % self.hostpt)
+
+	def update(self, st):
+		with self.typing:
+			out = st['output']
+			if len(out) < self.shown:		# restarted
+				self.reset()
+			new = out[self.shown:]
+			self.shown = len(out)
+			while new:
+				if self.echo and self.echo[0] in new:
+					i = new.index(self.echo[0])
+					self.put(new[:i])
+					new = new[i + len(self.echo[0]):]
+					self.echo.pop(0)
+				else:
+					self.put(new)
+					new = ''
+			msgs = st['messages'] + self.app.db.warnings
+			if len(msgs) > self.nmsg:
+				m = msgs[self.nmsg:]
+				self.nmsg = len(msgs)
+				body = self.win.body()
+				if self.hostpt and body[:self.hostpt][-1:] != '\n':
+					m = '\n' + m
+				self.put(m)
+			self.win.ctl('clean')
+
+	def typed(self, e):
+		with self.typing:
+			n = e.q1 - e.q0
+			if e.c2 == 'I':
+				if e.q0 < self.hostpt:
+					self.hostpt += n
+					return
+			else:
+				if e.q0 < self.hostpt:
+					self.hostpt -= min(n, self.hostpt - e.q0)
+				return
+			body = self.win.body()
+			pending = body[self.hostpt:]
+			while '\n' in pending:
+				line, pending = pending.split('\n', 1)
+				self.hostpt += len(line) + 1
+				self.echo.append(line + '\n')
+				self.app.cmd('input', text=line)
+			self.win.ctl('clean')
+
+	def execute(self, e):
+		if e.text.strip() == 'EOF':
+			self.app.cmd('eof')
+			return True
+		return super().execute(e)
+
+
+VIEWS = {'Data': DataView, 'Stack': StackView, 'Mem': MemView, 'Files': FilesView, 'Out': OutView}
+
+
+# --- pictures with a headless Chrome
+
+class Chrome:
+	def __init__(self, app):
+		self.app = app
+		self.bin = None
+		mac = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+		if os.environ.get('browser'):
+			self.bin = os.environ['browser']
+		elif os.path.exists(mac):
+			self.bin = mac
+		else:
+			for b in ('google-chrome', 'chromium', 'chromium-browser'):
+				p = shutil.which(b) or (b if os.access(b, os.X_OK) and os.path.isfile(b) else None)
+				if p:
+					self.bin = p
+					break
+		self.png = shutil.which('png')
+
+	def ok(self):
+		return self.bin is not None and self.png is not None
+
+	def shot(self, win, view):
+		"""Draw the page's view in the window image; an error or None."""
+		try:
+			pw, ph = win.imagesize()[:2]
+		except (P9Error, ValueError):
+			return 'Pict needs macme'
+		# taller than the window, as the views scroll inside the page
+		pw, ph = max(pw, 300), max(ph, 2000)
+		url = self.app.db.url('', view=view, once=1, lang=self.app.lang)
+		d = tempfile.mkdtemp(prefix='apascdb.')
+		try:
+			out = os.path.join(d, 'shot.png')
+			sandbox = ['--no-sandbox'] if os.geteuid() == 0 else []	# chrome refuses root otherwise
+			try:
+				subprocess.run([self.bin] + sandbox + ['--headless', '--disable-gpu', '--hide-scrollbars',
+					'--no-first-run', '--no-default-browser-check', '--disable-extensions',
+					'--disable-sync', '--disable-background-networking', '--mute-audio',
+					'--user-data-dir=' + os.path.join(d, 'prof'),
+					'--window-size=%d,%d' % (pw, ph), '--virtual-time-budget=3000',
+					'--screenshot=' + out, url],
+					stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+			except (OSError, subprocess.TimeoutExpired) as e:
+				return 'chrome: %s' % e
+			if not os.path.exists(out):
+				return 'chrome did not draw the page'
+			img = subprocess.run([self.png, '-t', out], stdout=subprocess.PIPE).stdout
+			if not img:
+				return 'png failed'
+			if win.closed:
+				return None
+			win.image(img)
+			return None
+		except P9Error as e:
+			return str(e)
+		finally:
+			shutil.rmtree(d, ignore_errors=True)
+
+
+# --- the program
+
+class App:
+	def __init__(self, args):
+		if not args or args[-1].startswith('-'):
+			sys.exit('usage: apascdb [-g] [-L] [-w] prog.p')
+		path = os.path.abspath(args[-1])
+		args = args[:-1] + [path]
+		self.args = args
+		self.path = path
+		self.dir = os.path.dirname(path)
+		self.lang = os.environ.get('pascdblang', 'en')
+		self.lock = threading.Lock()
+		self.state = None
+		self.done = threading.Event()
+		self.quitlock = threading.Lock()
+		self.addr = acmeaddr()
+		try:
+			self.conn = Conn(self.addr)
+		except OSError as e:
+			sys.exit('apascdb: cannot talk to acme: %s' % e)
+		self.db = Pascdb(args)
+		self.chrome = Chrome(self)
+		src = self.db.get('source')['lines']
+		if src and src[-1] == '':
+			src = src[:-1]
+		self.views = []
+		self.source = SourceView(self, src)
+		self.views.append(self.source)
+		for name in ('Data', 'Stack', 'Mem', 'Out'):
+			self.open(name, False)
+		# in macme, source and output in a column, the rest in the next
+		# one: first at the end of the column, in order, then where
+		# they go, which also sizes them
+		for v in self.views:
+			v.doplace(True)
+		for v in self.views:
+			v.doplace()
+
+	def open(self, name, place=True):
+		for v in self.views:
+			if isinstance(v, VIEWS[name]):
+				v.win.ctl('show')
+				return
+		v = VIEWS[name](self)
+		if place:
+			v.doplace()
+		with self.lock:
+			self.views.append(v)
+		if self.state:
+			self.safe(v.update, self.state)
+
+	def gone(self, v):
+		with self.lock:
+			if v in self.views:
+				self.views.remove(v)
+		if v is self.source:
+			self.quit()
+
+	def error(self, msg):
+		try:
+			f = self.conn.open('cons', OWRITE)
+			f.write(msg + '\n')
+			f.close()
+		except P9Error:
+			sys.stderr.write(msg + '\n')
+
+	def cmd(self, c, **q):
+		try:
+			self.db.get(c, **q)
+		except Exception as e:
+			self.error('apascdb: %s: %s' % (c, e))
+
+	def restart(self):
+		threading.Thread(target=self.cmd, args=('restart',), daemon=True).start()
+
+	def safe(self, f, *a):
+		try:
+			f(*a)
+		except (P9Error, OSError):
+			pass
+
+	def loop(self):
+		version = -1
+		while not self.done.is_set():
+			try:
+				st = self.db.get('state', since=version)
+			except Exception:
+				if self.db.proc.poll() is not None:
+					break
+				time.sleep(1)
+				continue
+			if st['status'] == 'quit':
+				break
+			if st['version'] == version:
+				continue
+			version = st['version']
+			self.state = st
+			for v in list(self.views):
+				self.safe(v.update, st)
+		self.quit()
+
+	def quit(self):
+		# whoever comes first cleans up and exits; the others wait for it
+		self.quitlock.acquire()
+		self.done.set()
+		self.db.quit()
+		for v in list(self.views):
+			v.win.delete()
+		os._exit(0)
+
+
+def main():
+	app = App(sys.argv[1:])
+	for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
+		signal.signal(sig, lambda *a: threading.Thread(target=app.quit).start())
+	app.loop()
+
+
+if __name__ == '__main__':
+	main()

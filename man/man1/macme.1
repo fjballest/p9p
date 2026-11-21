@@ -1,6 +1,6 @@
 .TH MACME 1
 .SH NAME
-macme, apdf, aimg, aweb \- acme with image windows
+macme, apdf, aimg, aweb, apascdb \- acme with image windows
 .SH SYNOPSIS
 .B macme
 [
@@ -30,6 +30,16 @@ macme, apdf, aimg, aweb \- acme with image windows
 .I height
 ]
 .I url
+.PP
+.B apascdb
+[
+.B -g
+] [
+.B -L
+] [
+.B -w
+]
+.I prog.p
 .SH DESCRIPTION
 .I Macme
 is
@@ -68,6 +78,21 @@ events, as if
 or
 .B end
 had been executed, instead of scrolling.
+.PP
+The ctl message
+.B place
+.I n
+.I percent
+moves the window to the
+.IR n th
+visible column (counting from 0, or from the right if
+.I n
+is negative),
+.I percent
+of the way down (at the end if it is negative).
+A window already in that column keeps its place among the others,
+and the border above it moves to that height.
+Clients use it to lay out several windows.
 .PP
 The wheel, the scroll bar, and the arrow, page, Home and End keys
 scroll the image; typing does not change it.
@@ -157,6 +182,89 @@ and
 .B Zoom-
 scale the page.
 .PP
+.I Apascdb
+runs a program of the
+.I pasc
+Pascal compiler under
+.IR pascdb ,
+its step-by-step viewer, with each of its views
+in a window instead of a browser page.
+It starts
+.B pascdb
+.B --no-browser
+(or
+.B $pascdb
+if set; the options are passed to it)
+and drives it through its HTTP interface.
+The source window
+.RB ( prog.p+pascdb )
+shows the state in its first line, the line about to run marked with
+.BR > ,
+and breakpoints marked with
+.BR * ;
+button 2 on a line number, or
+.B Break
+with the line selected, toggles a breakpoint.
+The data window
+.RB ( +data )
+shows the active calls, the global variables and the blocks
+allocated with
+.BR new ;
+button 3 on a pointer's address goes to its block.
+The stack
+.RB ( +stack )
+and memory
+.RB ( +mem )
+windows show the stack frames slot by slot and a hex dump
+of the memory in use.
+The output window
+.RB ( +out )
+shows what the program writes; lines typed at its end are its input,
+and
+.B EOF
+closes it.
+.B Files
+in the source tag opens a window with the input files and their
+read positions;
+.BR Data ,
+.BR Stack ,
+.B Mem
+and
+.B Out
+open those windows again after
+.BR Del .
+Every tag has
+.BR Step ,
+.BR Play ,
+.BR Pause ,
+.B Cont
+(run to the next breakpoint),
+.B Restart
+and
+.BR Quit ;
+.B Speed
+.I seconds
+sets the delay of
+.BR Play .
+After each step the windows show the first line that changed, selected.
+In
+.IR macme ,
+the source and output windows go to the second column from the right,
+and the others to the rightmost one.
+.B Pict
+in the data, stack, memory or files window shows that view as the
+browser page draws it (boxes, and arrows for pointers and var
+parameters) in the window image, rendered at each step by a headless
+Chrome or Chromium (or
+.BR $browser );
+.B Text
+goes back to text.
+Deleting the source window, or
+.BR Quit ,
+ends
+.I pascdb
+and removes all the windows.
+.PP
 All of them write
 .B dumpdir
 and
@@ -193,12 +301,20 @@ plot ... | topng | png -t | winwrite image
 .B \*9/bin/aimg
 .br
 .B \*9/bin/aweb
+.br
+.B \*9/bin/apascdb
 .SH SEE ALSO
 .IR acme (1),
 .IR acme (4),
 .IR acmeevent (1),
 .IR jpg (1),
 .IR image (6)
+.br
+.I https://github.com/fjballest/pasc
+for
+.I pasc
+and
+.I pascdb
 .SH BUGS
 It is a prototype: the image is kept in memory, the body text
 is hidden but kept, and there is no way to zoom in macme itself.
@@ -209,3 +325,8 @@ needs
 or
 .I gs
 to find the last page for End.
+.PP
+.I Apascdb
+pictures take about a second each, and do not mark what changed;
+only the source window is brought back by
+.BR Load .

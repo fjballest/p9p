@@ -780,12 +780,12 @@ clearplaces(void)
 	}
 }
 
+static void winplace(Window*, Column*, double);
+
 void
 rowplace(Window *w)
 {
 	Place *p, **pp;
-	Column *c;
-	int y;
 
 	if(w->dumpstr == nil || w->col == nil)
 		return;
@@ -795,16 +795,83 @@ rowplace(Window *w)
 	if(p == nil)
 		return;
 	*pp = p->next;
-	if(p->col < row.ncol){
-		c = row.col[p->col];
-		y = c->r.min.y+(p->percent*Dy(c->r))/100+0.5;
-		if(y<c->r.min.y || y>=c->r.max.y)
-			y = -1;
-		colclose(w->col, w, FALSE);
-		coladd(c, w, nil, y);
-	}
+	if(p->col < row.ncol)
+		winplace(w, row.col[p->col], p->percent);
 	free(p->cmd);
 	free(p);
+}
+
+// Move w to column c, percent of the way down (at the end if
+// percent is negative). A window already in c stays in its place
+// among the others, but its top moves to that height.
+static void
+winplace(Window *w, Column *c, double percent)
+{
+	Rectangle r, r1;
+	Window *v;
+	int i, y, ht;
+
+	y = c->r.min.y+(percent*Dy(c->r))/100+0.5;
+	if(percent<0 || y<c->r.min.y || y>=c->r.max.y)
+		y = -1;
+	if(w->col != c || y < 0){
+		colclose(w->col, w, FALSE);
+		coladd(c, w, nil, y);
+		if(y < 0)
+			return;
+	}
+	// coladd leaves the window above with just room for its
+	// text: move the border between them to y, if both fit.
+	for(i=0; i<c->nw; i++)
+		if(c->w[i] == w)
+			break;
+	if(i == 0 || i == c->nw || w->r.min.y == y)
+		return;
+	v = c->w[i-1];
+	ht = v->tag.fr.font->height + v->body.fr.font->height + Border + 1;
+	if(y < v->r.min.y+ht || y > w->r.max.y-ht)
+		return;
+	r = v->r;
+	r.max.y = y-Border;
+	r.max.y = winresize(v, r, FALSE, TRUE);
+	r1 = r;
+	r1.min.y = r.max.y;
+	r1.max.y = r1.min.y+Border;
+	draw(screen, r1, display->black, nil, ZP);
+	r = w->r;
+	r.min.y = r1.max.y;
+	winresize(w, r, FALSE, TRUE);
+}
+
+// The ctl message "place n percent": move w to the n-th visible
+// column (from 0; from the right if n is negative), percent of
+// the way down (at the end if negative), so that clients like
+// apascdb can lay out their windows. Returns an error string or nil.
+char*
+rowmove(Window *w, int n, double percent)
+{
+	Column *c, *vis[64];
+	int i, nvis;
+
+	if(w->col == nil)
+		return "window has no column";
+	nvis = 0;
+	for(i=0; i<row.ncol && nvis<nelem(vis); i++)
+		if(!row.col[i]->hidden)
+			vis[nvis++] = row.col[i];
+	if(nvis == 0)
+		return "no columns";
+	if(n < 0)
+		n += nvis;
+	if(n < 0)
+		n = 0;
+	if(n >= nvis)
+		n = nvis-1;
+	c = vis[n];
+	if(percent > 100)
+		percent = 100;
+	winplace(w, c, percent);
+	return nil;
 }
 
 int
