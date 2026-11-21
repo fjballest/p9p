@@ -1,4 +1,5 @@
 #include <u.h>
+#include <errno.h>
 #include <libc.h>
 #include <draw.h>
 #include <thread.h>
@@ -140,19 +141,28 @@ fsysproc(void *v)
 	Fid *f;
 	Fcall t;
 	uchar *buf;
+	int nintr;
 
 	threadsetname("fsysproc");
+	nintr = 0;
 
 	USED(v);
 	x = nil;
 	for(;;){
 		buf = emalloc(messagesize+UTFmax);	/* overflow for appending partial rune in xfidwrite */
 		n = read9pmsg(sfd, buf, messagesize);
+		if(n < 0 && !closing && (errno == EINTR || errno == EINVAL) && ++nintr < 100){
+			// nemo: a note (e.g., sys: child, when a win exits)
+			// interrupted the read; it is not a hangup.
+			free(buf);
+			continue;
+		}
 		if(n <= 0){
 			if(closing)
 				break;
 			error("i/o error on server channel");
 		}
+		nintr = 0;
 		if(x == nil){
 			sendp(cxfidalloc, nil);
 			x = recvp(cxfidalloc);

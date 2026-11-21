@@ -41,6 +41,9 @@ acme
 	The "sys: child" note is ignored: it made acme kill its
 	processes, dump, and quit when a child (e.g., the fontsrv
 	used to load a font) exited early.
+	A read of the 9P server channel interrupted by a note is
+	retried, instead of making acme exit with "i/o error on
+	server channel" (e.g., on macOS when a win exits).
 
 devdraw (macOS)
 	Wheel events carry the scroll amount: bit 8 or 16 gives

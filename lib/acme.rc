@@ -1,5 +1,7 @@
 fn newwindow {
-	winctl=`{9p read acme/new/ctl}
+	# split the ctl line even if $ifs is just newline
+	ifs=' 	
+' {winctl=`{9p read acme/new/ctl}}
 	winid=$winctl(1)
 }
 
