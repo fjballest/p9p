@@ -222,8 +222,8 @@ finishrpc(Muxrpc *r, Wsysmsg *w)
 	if(!muxrpccanfinish(r, &v))
 		return 0;
 	p = v;
-	if(p == nil)	/* eof on connection */
-		exit(0);
+	if(p == nil)	// eof on connection: the window was closed
+		exits("hangup");
 	GET(p, n);
 	convM2W(p, n, w);
 	free(p);
