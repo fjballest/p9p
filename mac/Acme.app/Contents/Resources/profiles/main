@@ -1,5 +1,5 @@
 # The usual full screen acme, like /u/rcbin/a with no arguments.
 # Up to four of them, each with its own namespace and dump.
-NAMESPACE="/tmp/$USER.ns.0 /tmp/$USER.ns.1 /tmp/$USER.ns.2 /tmp/$USER.ns.3"
-DUMP="$HOME/acme.dump $HOME/acme.dump.1 $HOME/acme.dump.2 $HOME/acme.dump.3"
+NAMESPACE=(/tmp/$user.ns.0 /tmp/$user.ns.1 /tmp/$user.ns.2 /tmp/$user.ns.3)
+DUMP=($home/acme.dump $home/acme.dump.1 $home/acme.dump.2 $home/acme.dump.3)
 font=/mnt/font/Consolas-Bold/14a/font

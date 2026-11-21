@@ -1,0 +1,121 @@
+#!/usr/local/plan9/bin/rc
+# acmeapp dir: ask with 9menu which acme to start, then start it.
+# dir is the Contents directory of Acme.app.
+#
+# Each kind of acme is a profile, a small rc file in
+# $home/lib/acmeapp (examples in Resources/profiles are copied
+# there the first time). The file name is the name in the menu.
+# $home/lib/acmeapp/env, if present, is read first; set path and
+# the like there, and menufont for the font used by the menus.
+# The menu can also create a new acme (asking for its name and
+# font) or remove one (it goes to $home/lib/acmeapp/.removed).
+
+ifs='
+'
+app=$1
+dir=$home/lib/acmeapp
+path=(/usr/bin /bin /usr/sbin /sbin $PLAN9/bin)
+echo `{date} Acme.app PLAN9'='$PLAN9 >[1=2]
+
+if(! test -d $dir){
+	mkdir -p $dir
+	cp $app/Resources/profiles/* $dir/
+}
+
+# profiles used to be sh files; set aside those rc can't read.
+for(f in $dir/*){
+	if(grep -q -e export -e '"' $f >[2]/dev/null){
+		echo moving sh profile $f to $dir/.sh-old >[1=2]
+		mkdir -p $dir/.sh-old
+		mv $f $dir/.sh-old/
+		b=`{basename $f}
+		if(test -f $app/Resources/profiles/$b)
+			cp $app/Resources/profiles/$b $dir/
+	}
+}
+
+if(test -f $dir/env)
+	. $dir/env
+
+new='New acme...'
+remove='Remove acme...'
+mflags=(-l Acme)
+if(! ~ $#menufont 0)
+	mflags=($mflags -f $menufont)
+
+fn profiles {
+	ls $dir | grep -v -e '^env$' -e '\.' -e '~$'
+}
+
+fn tell {
+	9menu $mflags $* >/dev/null
+}
+
+fn newacme {
+	name=()
+	n=`{9menu $mflags -i 'Name for the new acme:'}
+	if(~ $#n 0)
+		status=cancel
+	if not if(~ $n env || ! echo $n | grep -E -q '^[A-Za-z0-9_-]+$')
+		tell 'Use letters, digits, - and _ for the name.'
+	if not if(test -e $dir/$n)
+		name=$n
+	if not {
+		f=`{sed -n 's/^font=//p' $dir/$last >[2]/dev/null | sed 1q}
+		if(~ $#f 0)
+			f=/mnt/font/Consolas-Bold/14a/font
+		f=`{9menu $mflags -i 'Font for acme '^$n^':' $f}
+		if(! ~ $#f 0){
+			{
+				echo '# Created by Acme.app on '^`{date +%Y-%m-%d}^.
+				echo '# NAMESPACE and DUMP default to /tmp/$user.ns.'^$n^' and $home/acme.dump.'^$n
+				echo 'font='^$f
+			} >$dir/$n
+			name=$n
+		}
+	}
+}
+
+fn rmacme {
+	p=`{9menu $mflags -t -l 'Remove which acme?' `{profiles} Cancel}
+	if(! ~ $#p 0 && ! ~ $p Cancel){
+		c=`{9menu $mflags 'Remove '^$p^' (its dump is kept)' Cancel}
+		if(~ $c 1){
+			echo removing profile $p >[1=2]
+			mkdir -p $dir/.removed
+			mv $dir/$p $dir/.removed/$p
+		}
+	}
+}
+
+name=()
+while(~ $#name 0){
+	ps=`{profiles}
+	last=`{cat $dir/.last >[2]/dev/null}
+	if(! ~ $#last 1 || ! ~ $last $ps)
+		last=main
+	if(! ~ $last $ps)
+		last=$ps(1)
+	items=()
+	if(! ~ $#last 0)
+		items=$last
+	for(p in $ps)
+		if(! ~ $p $last)
+			items=($items $p)
+	choice=`{9menu $mflags -t $items $new $remove}
+	if(~ $#choice 0)
+		exit cancel
+	switch($choice){
+	case $new
+		newacme
+	case $remove
+		rmacme
+	case *
+		name=$choice
+	}
+}
+echo $name >$dir/.last
+
+echo starting $name >[1=2]
+$PLAN9/bin/rc $app/Resources/start $name </dev/null >[1=2] &
+exit ''

@@ -1,3 +1,3 @@
 # Lectures: small window, large font (like Fdp).
-# NAMESPACE and DUMP default to /tmp/$USER.ns.fdp and $HOME/acme.dump.fdp
+# NAMESPACE and DUMP default to /tmp/$user.ns.fdp and $home/acme.dump.fdp
 font=/mnt/font/Consolas/18a/font

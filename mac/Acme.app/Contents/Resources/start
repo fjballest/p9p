@@ -1,96 +1,109 @@
-#!/bin/sh
-# start name: run acme using profile $HOME/lib/acmeapp/name.
+#!/usr/local/plan9/bin/rc
+# start name: run acme using profile $home/lib/acmeapp/name,
+# in its own namespace, with its own dump, plumber and fontsrv.
 # Based on nemo's /u/rcbin/a.
 #
 # A profile may set (all optional):
-#	NAMESPACE	namespace dir (default /tmp/$USER.ns.name)
+#	NAMESPACE	namespace dir (default /tmp/$user.ns.name)
 #	DUMP		dump file loaded at start and used by Dump and Load
-#			(default $HOME/acme.dump.name)
+#			(default $home/acme.dump.name)
 #			Both may be lists: the first namespace without a
 #			running acme is used, along with the matching dump.
 #	font		font for acme (-f and -F)
 #	altfont		fixed width font (-F), defaults to $font
-#	acmeflags	more flags for acme (default -a)
-#	tabstop, prompt, shell ...: anything else to export
+#	acmeflags	flags for acme (default -a)
+#	tabstop, prompt, acmeshell ...: anything else acme should see
 
+ifs='
+'
 name=$1
-USER=${USER:-$(id -un)}
-set -x
-dir=$HOME/lib/acmeapp
-PLAN9=${PLAN9:-/usr/local/plan9}
-export PLAN9
+dir=$home/lib/acmeapp
+if(~ $#user 0)
+	user=$USER
+if(~ $#user 0)
+	user=`{id -un}
+path=(/usr/bin /bin /usr/sbin /sbin $PLAN9/bin)
+if(test -f $dir/env)
+	. $dir/env
 
-# Finder gives us a minimal environment.
-PATH=$(/usr/libexec/path_helper -s 2>/dev/null | sed -n 's/^PATH="\(.*\)"; export PATH;$/\1/p')
-PATH=${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}:$HOME/bin:$PLAN9/bin
-export PATH
-[ -f "$dir/env" ] && . "$dir/env"
-
-NAMESPACE=/tmp/$USER.ns.$name
-DUMP=$HOME/acme.dump.$name
-font=
-altfont=
+NAMESPACE=/tmp/$user.ns.$name
+DUMP=$home/acme.dump.$name
+font=()
+altfont=()
 acmeflags=-a
 tabstop=4
-prompt='; '
+prompt=('; ' '	')
 SHELL=$PLAN9/bin/rc
-[ -x /bin/rc ] && SHELL=/bin/rc
-. "$dir/$name" || exit 1
+if(test -x /bin/rc)
+	SHELL=/bin/rc
+. $dir/$name
 shell=$SHELL
-acmeshell=${acmeshell:-$SHELL}
-altfont=${altfont:-$font}
+if(~ $#acmeshell 0)
+	acmeshell=$SHELL
+if(~ $#altfont 0)
+	altfont=$font
 
-running() {
-	NAMESPACE=$1 9p stat acme >/dev/null 2>&1
+fn running {
+	NAMESPACE=$1 9p stat acme >/dev/null >[2=1]
 }
 
-dumps=$DUMP
-ns=
-for n in $NAMESPACE; do
-	set -- $dumps
-	DUMP=${1:-$DUMP}
-	[ $# -gt 1 ] && shift
-	dumps="$*"
-	if ! running "$n"; then
-		ns=$n
-		break
-	fi
-done
-if [ -z "$ns" ]; then
-	osascript -e "display alert \"Acme\" message \"acme $name is already running\"" >/dev/null
-	exit 1
-fi
+fn popdump {
+	d=$1
+	if(! ~ $#* 1)
+		shift
+	dumps=($*)
+}
+
+dumps=($DUMP)
+ns=()
+for(n in $NAMESPACE){
+	if(~ $#ns 0){
+		popdump $dumps
+		if(! running $n){
+			ns=$n
+			DUMP=$d
+		}
+	}
+}
+if(~ $#ns 0){
+	9menu -l Acme 'acme '^$name^' is already running' >/dev/null
+	exit running
+}
 NAMESPACE=$ns
 acmedump=$DUMP
-export NAMESPACE acmedump font tabstop prompt SHELL shell acmeshell
 
-mkdir -p "$NAMESPACE"
-chmod 700 "$NAMESPACE"
-rm -f "$NAMESPACE"/*
+mkdir -p $NAMESPACE
+chmod 700 $NAMESPACE
+rm -f $NAMESPACE/*
 
-PLUMBPID=0
-if ! 9p stat plumb >/dev/null 2>&1; then
+plumbpid=()
+if(! 9p stat plumb >/dev/null >[2=1]){
 	plumber -f &
-	PLUMBPID=$!
-fi
-FONTPID=0
-if ! 9p stat font >/dev/null 2>&1; then
+	plumbpid=$apid
+}
+fontpid=()
+if(! 9p stat font >/dev/null >[2=1]){
 	fontsrv &
-	FONTPID=$!
-fi
+	fontpid=$apid
+}
 
 arch=x86_64
-if arch -arch arm64 true >/dev/null 2>&1; then
+if(arch -arch arm64 true >/dev/null >[2=1])
 	arch=arm64
-fi
-set -- $acmeflags
-[ -n "$font" ] && set -- "$@" -f "$font"
-[ -n "$altfont" ] && set -- "$@" -F "$altfont"
-[ -e "$DUMP" ] && set -- "$@" -l "$DUMP"
-arch -arch $arch $PLAN9/bin/acme "$@"
+args=($acmeflags)
+if(! ~ $#font 0)
+	args=($args -f $font)
+if(! ~ $#altfont 0)
+	args=($args -F $altfont)
+if(test -e $DUMP)
+	args=($args -l $DUMP)
+echo acme $args NAMESPACE'='$NAMESPACE acmedump'='$acmedump >[1=2]
+arch -arch $arch $PLAN9/bin/acme $args
 
-[ $PLUMBPID -ne 0 ] && kill $PLUMBPID
-[ $FONTPID -ne 0 ] && kill $FONTPID
+if(! ~ $#plumbpid 0)
+	kill $plumbpid
+if(! ~ $#fontpid 0)
+	kill $fontpid
 sleep 1
-rm -f "$NAMESPACE"/*
-exit 0
+rm -f $NAMESPACE/*
+exit ''
