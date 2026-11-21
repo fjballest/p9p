@@ -16,6 +16,8 @@ enum
 	Gap = 4,
 	Maxopen = 64,	// fonts kept open
 	Maxvis = 256,	// rows on the screen
+	Idle = 2000,	// ms without input before showing the fonts
+	Tick = 250,	// ms between timer events
 };
 
 typedef struct Item Item;
@@ -38,6 +40,7 @@ static Rectangle visr[Maxvis];
 static int	nvis;
 static int	nopen;
 static int	rowh;		// height of a row
+static int	fancy;		// show each name in its font
 static char	filter[128];
 static int	tflag;
 static Image	*back, *high, *bord, *text, *htext;
@@ -227,10 +230,13 @@ drawrow(int j)
 		draw(screen, r, back, nil, ZP);
 		fg = text;
 	}
-	// until its font is loaded, show the name in the default font
+	// while busy, or until its font is loaded,
+	// show the name in the default font
 	replclipr(screen, 0, r);
-	if(it->f == nil)
-		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), bord, ZP, font, it->label);
+	if(!fancy)
+		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), fg, ZP, font, it->label);
+	else if(it->f == nil)	// not loaded yet, or can't be
+		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), it->bad && top+j != sel ? bord : fg, ZP, font, it->label);
 	else
 		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), fg, ZP, it->f, it->label);
 	replclipr(screen, 0, screen->r);
@@ -358,7 +364,9 @@ main(int argc, char *argv[])
 	char *label, *fontname, *size;
 	Event e;
 	Mouse m;
-	int i, n, buttons;
+	int i, n, buttons, ev;
+	ulong Etimer;
+	vlong last;
 	Rune r;
 
 	label = "9font";
@@ -409,15 +417,31 @@ main(int argc, char *argv[])
 	rowh = font->height+Gap;
 	itemfont(&items[shown[0]]);	// a guess at the row height
 	einit(Emouse|Ekeyboard);
+	Etimer = etimer(0, Tick);
 	redraw();
 
+	// Names are shown in the default font; the fonts are
+	// shown (and loaded) only after Idle ms without input,
+	// so scrolling and typing never wait for them.
 	buttons = 0;
+	last = nsec();
 	for(;;){
-		// fonts are loaded while nothing else happens,
-		// so scrolling and typing never wait for them
-		while(!ecanread(Emouse|Ekeyboard) && loadone())
-			;
-		switch(event(&e)){
+		if(fancy)
+			while(!ecanread(Emouse|Ekeyboard) && loadone())
+				;
+		ev = event(&e);
+		if(ev == Etimer){
+			if(!fancy && nsec()-last >= Idle*1000000LL){
+				fancy = 1;
+				redraw();
+			}
+			continue;
+		}
+		if(ev == Ekeyboard || (ev == Emouse && e.mouse.buttons != 0)){
+			last = nsec();
+			fancy = 0;
+		}
+		switch(ev){
 		case Emouse:
 			m = e.mouse;
 			if(m.buttons & (8|16)){
