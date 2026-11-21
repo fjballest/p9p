@@ -21,6 +21,25 @@
 [
 .I item ...
 ]
+.PP
+.B 9menu
+.B -i
+.I prompt
+[
+.B -f
+.I font
+]
+[
+.B -l
+.I label
+]
+[
+.B -W
+.I winsize
+]
+[
+.I text
+]
 .SH DESCRIPTION
 .I 9menu
 opens a window showing a menu, one line per
@@ -29,8 +48,9 @@ and waits for the user to choose one.
 Without arguments, the items are read from standard input,
 one per line; empty lines are ignored.
 .PP
-Moving the mouse highlights the item under it;
-pressing and releasing any of buttons 1, 2 or 3 over an item chooses it.
+The first item starts highlighted;
+moving the mouse highlights the item under it.
+Pressing and releasing any of buttons 1, 2 or 3 over an item chooses it.
 The scroll wheel, and the Page Up and Page Down keys, scroll menus
 too long for the window.
 The Up and Down arrows (or control-P and control-N) move the highlight,
@@ -59,12 +79,32 @@ selects the font and
 .B -l
 the window label (default
 .BR 9menu ).
+.PP
+With
+.BR -i ,
+.I 9menu
+asks for a line of text instead:
+it shows
+.I prompt
+followed by
+.I text
+(empty by default), which can be edited by typing,
+backspace, control-U (erase all) and control-W (erase a word).
+Return prints the text on standard output;
+Escape or Delete close the window without printing anything,
+with a non-null exit status.
 .SH EXAMPLES
 Ask which acme to start:
 .IP
 .EX
 n=`{9menu -t main fdp sot}
 if(~ $#n 1) acme -l $home/acme.dump.$n
+.EE
+.PP
+Ask for a name:
+.IP
+.EX
+name=`{9menu -i 'Name:' talk}
 .EE
 .SH SOURCE
 .B \*9/src/cmd/9menu.c

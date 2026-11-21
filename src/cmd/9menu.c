@@ -11,23 +11,28 @@
 
 enum
 {
-	Margin = 4,	/* space around the items */
-	Gap = 2,	/* space between items */
+	Margin = 4,	// space around the items
+	Gap = 2,	// space between items
 	Maxitems = 512,
-	Maxshown = 30,	/* items shown without scrolling */
+	Maxshown = 30,	// items shown without scrolling
 };
 
 static char	*items[Maxitems];
 static int	nitems;
-static int	sel = -1;	/* selected item, or -1 */
-static int	top;		/* first item shown */
+static int	sel;		// selected item, or -1
+static int	top;		// first item shown
 static int	tflag;
+static char	*prompt;	// -i: ask for a line of text
+static Rune	entry[256];
+static int	nentry;
 static Image	*back, *high, *bord, *text, *htext;
+
+static void	drawentry(void);
 
 static void
 usage(void)
 {
-	fprint(2, "usage: 9menu [-t] [-f font] [-l label] [-W winsize] [item ...]\n");
+	fprint(2, "usage: 9menu [-t] [-f font] [-l label] [-W winsize] [item ...]\n       9menu -i prompt [-f font] [-l label] [-W winsize] [text]\n");
 	exits("usage");
 }
 
@@ -120,6 +125,10 @@ eresized(int new)
 {
 	if(new && getwindow(display, Refnone) < 0)
 		sysfatal("can't reattach to window: %r");
+	if(prompt != nil){
+		drawentry();
+		return;
+	}
 	if(top > nitems-nshown())
 		top = nitems-nshown();
 	if(top < 0)
@@ -127,7 +136,7 @@ eresized(int new)
 	redraw();
 }
 
-/* make item i (-1 for none) the selected one, scrolling to show it */
+// make item i (-1 for none) the selected one, scrolling to show it
 static void
 setsel(int i)
 {
@@ -193,13 +202,11 @@ choose(int i)
 	exits(nil);
 }
 
-int _fontpipe(char*);
+int	_fontpipe(char*);
 
-/*
- * Guess the height of the font before the window exists,
- * by reading the first line of the font file, so the window
- * can be created at about the right size.
- */
+// Guess the height of the font before the window exists,
+// by reading the first line of the font file, so the window
+// can be created at about the right size.
 static int
 fontheight(char *name)
 {
@@ -210,7 +217,7 @@ fontheight(char *name)
 		name = getenv("font");
 	if(name == nil)
 		return 0;
-	if((p = strchr(name, '*')) != nil && p[1] == '/')	/* scale*name */
+	if((p = strchr(name, '*')) != nil && p[1] == '/')	// scale*name
 		name = p+1;
 	fd = open(name, OREAD);
 	if(fd < 0 && strncmp(name, "/mnt/font/", 10) == 0)
@@ -225,16 +232,16 @@ fontheight(char *name)
 	return atoi(buf);
 }
 
-/* set winsize to fit the items, guessing the font size */
+// set winsize to fit the items, guessing the font size
 static void
 guesswinsize(char *fontname)
 {
 	int i, n, h, cw, w;
 
 	h = fontheight(fontname);
-	cw = (h+1)/2;	/* a guess at the average width */
+	cw = (h+1)/2;	// a guess at the average width
 	if(h <= 0 || h > 200){
-		/* *default* font */
+		// *default* font
 		h = 15;
 		cw = 9;
 	}
@@ -248,7 +255,7 @@ guesswinsize(char *fontname)
 	winsize = smprint("%dx%d", (w+4)*cw + 2*Margin, n*(h+Gap) + 2*Margin);
 }
 
-/* fix the window size now that the font is known, if it is off */
+// fix the window size now that the font is known, if it is off
 static void
 fitwindow(void)
 {
@@ -271,6 +278,71 @@ fitwindow(void)
 		h = dy;
 	if(w != dx || h != dy)
 		drawresizewindow(Rect(0, 0, w, h));
+}
+
+static void
+drawentry(void)
+{
+	Rectangle r;
+	Point p;
+	char *t;
+
+	draw(screen, screen->r, back, nil, ZP);
+	border(screen, screen->r, 2, bord, ZP);
+	r = insetrect(screen->r, Margin);
+	p = string(screen, Pt(r.min.x, r.min.y+Gap/2), high, ZP, font, prompt);
+	p = string(screen, p, text, ZP, font, " ");
+	t = smprint("%.*S", nentry, entry);
+	p = string(screen, p, text, ZP, font, t);
+	free(t);
+	draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
+	flushimage(display, 1);
+}
+
+// run the -i dialog: edit a line of text, print it on Return
+static void
+doentry(void)
+{
+	Event e;
+	char *t;
+
+	drawentry();
+	for(;;){
+		switch(event(&e)){
+		case Emouse:
+			break;
+		case Ekeyboard:
+			switch(e.kbdc){
+			case '\n':
+			case '\r':
+				t = smprint("%.*S", nentry, entry);
+				print("%s\n", t);
+				exits(nil);
+			case Kesc:
+			case Kdel:
+				exits("cancel");
+			case '\b':	// backspace
+				if(nentry > 0)
+					nentry--;
+				break;
+			case 0x15:	// ^U
+				nentry = 0;
+				break;
+			case 0x17:	// ^W
+				while(nentry > 0 && isspacerune(entry[nentry-1]))
+					nentry--;
+				while(nentry > 0 && !isspacerune(entry[nentry-1]))
+					nentry--;
+				break;
+			default:
+				if(e.kbdc >= ' ' && e.kbdc < KF && nentry < nelem(entry))
+					entry[nentry++] = e.kbdc;
+				break;
+			}
+			drawentry();
+			break;
+		}
+	}
 }
 
 void
@@ -296,14 +368,27 @@ main(int argc, char *argv[])
 	case 'W':
 		winsize = EARGF(usage());
 		break;
+	case 'i':
+		prompt = EARGF(usage());
+		break;
 	default:
 		usage();
 	}ARGEND
 
-	for(i = 0; i < argc; i++)
-		additem(argv[i]);
-	if(argc == 0)
-		readitems();
+	if(prompt != nil){
+		if(argc > 1)
+			usage();
+		if(argc == 1)
+			for(i = 0; argv[0][i] != 0 && nentry < nelem(entry); nentry++)
+				i += chartorune(&entry[nentry], argv[0]+i);
+		// one item, only to size the window
+		additem(smprint("%s %-40s", prompt, argc == 1 ? argv[0] : ""));
+	}else{
+		for(i = 0; i < argc; i++)
+			additem(argv[i]);
+		if(argc == 0)
+			readitems();
+	}
 	if(nitems == 0)
 		sysfatal("no items");
 
@@ -322,6 +407,8 @@ main(int argc, char *argv[])
 	if(!sized)
 		fitwindow();
 	einit(Emouse|Ekeyboard);
+	if(prompt != nil)
+		doentry();
 	redraw();
 
 	buttons = 0;
@@ -339,9 +426,10 @@ main(int argc, char *argv[])
 			}
 			if(m.buttons & 7)
 				buttons = m.buttons;
-			setsel(itemat(m.xy));
+			if(itemat(m.xy) >= 0)
+				setsel(itemat(m.xy));
 			if(buttons && (m.buttons & 7) == 0){
-				/* released: choose what is under the mouse */
+				// released: choose what is under the mouse
 				buttons = 0;
 				choose(itemat(m.xy));
 			}
@@ -349,14 +437,14 @@ main(int argc, char *argv[])
 		case Ekeyboard:
 			switch(e.kbdc){
 			case Kup:
-			case 0x10:	/* ^P */
+			case 0x10:	// ^P
 				if(sel < top || sel >= top+nshown())
 					setsel(top+nshown()-1 < nitems ? top+nshown()-1 : nitems-1);
 				else
 					setsel(sel <= 0 ? 0 : sel-1);
 				break;
 			case Kdown:
-			case 0x0e:	/* ^N */
+			case 0x0e:	// ^N
 				if(sel < top || sel >= top+nshown())
 					setsel(top);
 				else
