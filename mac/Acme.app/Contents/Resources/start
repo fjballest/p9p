@@ -66,7 +66,7 @@ for(n in $NAMESPACE){
 	}
 }
 if(~ $#ns 0){
-	9menu -l Acme 'acme '^$name^' is already running' >/dev/null
+	9menu -l Acme $name^' already running' >/dev/null
 	exit running
 }
 NAMESPACE=$ns

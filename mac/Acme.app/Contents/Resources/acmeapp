@@ -37,8 +37,8 @@ for(f in $dir/*){
 if(test -f $dir/env)
 	. $dir/env
 
-new='New acme...'
-remove='Remove acme...'
+new=New
+remove=Remove
 mflags=(-l Acme)
 if(! ~ $#menufont 0)
 	mflags=($mflags -f $menufont)
@@ -56,13 +56,13 @@ fn newacme {
 	f=`{sed -n 's/^font=//p' $dir/$last >[2]/dev/null | sed 1q}
 	if(~ $#f 0)
 		f=/mnt/font/Consolas-Bold/14a/font
-	x=`{9menu $mflags -i 'Name for the new acme:' 'Font:='^$f}
+	x=`{9menu $mflags -i 'Name:' 'Font:='^$f}
 	if(~ $#x 0)
 		status=cancel
 	if not if(~ $x(1) _ || ~ $x(2) _)
-		tell 'Give both a name and a font.'
-	if not if(~ $x(1) env || ! echo $x(1) | grep -E -q '^[A-Za-z0-9_-]+$')
-		tell 'Use letters, digits, - and _ for the name.'
+		tell 'need a name and a font'
+	if not if(~ $x(1) env New Remove || ! echo $x(1) | grep -E -q '^[A-Za-z0-9_-]+$')
+		tell 'name: letters, digits, - and _ only'
 	if not if(test -e $dir/$x(1))
 		name=$x(1)
 	if not {
@@ -77,9 +77,9 @@ fn newacme {
 }
 
 fn rmacme {
-	p=`{9menu $mflags -t -l 'Remove which acme?' `{profiles} Cancel}
-	if(! ~ $#p 0 && ! ~ $p Cancel){
-		c=`{9menu $mflags 'Remove '^$p^' (its dump is kept)' Cancel}
+	p=`{9menu $mflags -t -l Remove `{profiles}}
+	if(! ~ $#p 0){
+		c=`{9menu $mflags 'Remove '^$p^' (keep dump)' Cancel}
 		if(~ $c 1){
 			echo removing profile $p >[1=2]
 			mkdir -p $dir/.removed
