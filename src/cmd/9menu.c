@@ -14,6 +14,7 @@ enum
 	Margin = 4,	/* space around the items */
 	Gap = 2,	/* space between items */
 	Maxitems = 512,
+	Maxshown = 30,	/* items shown without scrolling */
 };
 
 char	*items[Maxitems];
@@ -192,23 +193,84 @@ choose(int i)
 	exits(nil);
 }
 
+int _fontpipe(char*);
+
+/*
+ * Guess the height of the font before the window exists,
+ * by reading the first line of the font file, so the window
+ * can be created at about the right size.
+ */
+int
+fontheight(char *name)
+{
+	char buf[64], *p;
+	int fd, n;
+
+	if(name == nil)
+		name = getenv("font");
+	if(name == nil)
+		return 0;
+	if((p = strchr(name, '*')) != nil && p[1] == '/')	/* scale*name */
+		name = p+1;
+	fd = open(name, OREAD);
+	if(fd < 0 && strncmp(name, "/mnt/font/", 10) == 0)
+		fd = _fontpipe(name+10);
+	if(fd < 0)
+		return 0;
+	n = read(fd, buf, sizeof buf-1);
+	close(fd);
+	if(n <= 0)
+		return 0;
+	buf[n] = 0;
+	return atoi(buf);
+}
+
+/* set winsize to fit the items, guessing the font size */
+void
+guesswinsize(char *fontname)
+{
+	int i, n, h, cw, w;
+
+	h = fontheight(fontname);
+	cw = (h+1)/2;	/* a guess at the average width */
+	if(h <= 0 || h > 200){
+		/* *default* font */
+		h = 15;
+		cw = 9;
+	}
+	w = 0;
+	for(i = 0; i < nitems; i++)
+		if(utflen(items[i]) > w)
+			w = utflen(items[i]);
+	n = nitems;
+	if(n > Maxshown)
+		n = Maxshown;
+	winsize = smprint("%dx%d", (w+4)*cw + 2*Margin, n*(h+Gap) + 2*Margin);
+}
+
+/* fix the window size now that the font is known, if it is off */
 void
 fitwindow(void)
 {
-	Rectangle r;
-	int i, w, n;
+	int i, w, h, n, dx, dy;
 
 	w = 0;
 	for(i = 0; i < nitems; i++)
 		if(stringwidth(font, items[i]) > w)
 			w = stringwidth(font, items[i]);
-	w += 2*Margin + 4*stringwidth(font, "0");
+	w += 2*Margin + 2*stringwidth(font, "0");
 	n = nitems;
-	if(n > 30)
-		n = 30;
-	r = Rect(0, 0, w, 2*Margin + n*itemht());
-	r = rectaddpt(r, screen->r.min);
-	drawresizewindow(r);
+	if(n > Maxshown)
+		n = Maxshown;
+	h = 2*Margin + n*itemht();
+	dx = Dx(screen->r);
+	dy = Dy(screen->r);
+	if(dx >= w && dx <= 2*w)
+		w = dx;
+	if(dy >= h && dy <= h+itemht())
+		h = dy;
+	if(w != dx || h != dy)
+		drawresizewindow(Rect(0, 0, w, h));
 }
 
 void
@@ -217,7 +279,7 @@ main(int argc, char *argv[])
 	char *label, *fontname;
 	Event e;
 	Mouse m;
-	int i, buttons;
+	int i, buttons, sized;
 
 	label = "9menu";
 	fontname = nil;
@@ -245,6 +307,9 @@ main(int argc, char *argv[])
 	if(nitems == 0)
 		sysfatal("no items");
 
+	sized = winsize != nil;
+	if(!sized)
+		guesswinsize(fontname);
 	if(initdraw(nil, fontname, label) < 0)
 		sysfatal("initdraw: %r");
 	back = allocimagemix(display, DPalegreen, DWhite);
@@ -254,7 +319,7 @@ main(int argc, char *argv[])
 	htext = back;
 	if(back == nil || high == nil || bord == nil)
 		sysfatal("allocimage: %r");
-	if(winsize == nil)
+	if(!sized)
 		fitwindow();
 	einit(Emouse|Ekeyboard);
 	redraw();
