@@ -323,6 +323,8 @@ struct Column
 	Window	**w;
 	int		nw;
 	int		safe;
+	int		hidden;	// nemo: minimised to a narrow strip
+	int		savew;	// width before hiding
 };
 
 void		colinit(Column*, Rectangle);

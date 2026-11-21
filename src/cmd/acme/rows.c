@@ -56,6 +56,8 @@ rowsize(Row *row)
 	Column *d;
 	int i, dx;
 
+	for(i=0; i<row->ncol; i++)
+		row->col[i]->hidden = FALSE;
 	r = row->r;
 	r.min.y = row->tag.fr.r.max.y+Border;
 	draw(screen, r, display->white, nil, ZP);
@@ -166,6 +168,134 @@ rowresize(Row *row, Rectangle r)
 	}
 }
 
+// nemo: width of a hidden column: its box and a bit of its tag
+static int
+hiddenwid(void)
+{
+	return Scrollwid+Scrollgap+stringwidth(font, "New ");
+}
+
+// lay out the columns: hidden ones get hiddenwid(), and
+// the others share the rest in proportion to their widths
+// (savew for those being shown again).
+static void
+rowlayout(Row *row)
+{
+	Rectangle r, rr, r2;
+	Column *c;
+	int i, nvis, avail, tot, w, last;
+
+	nvis = 0;
+	tot = 0;
+	last = -1;
+	for(i=0; i<row->ncol; i++){
+		c = row->col[i];
+		if(!c->hidden){
+			nvis++;
+			if(c->savew <= 0)
+				c->savew = Dx(c->r);
+			tot += c->savew;
+			last = i;
+		}
+	}
+	if(nvis == 0)
+		return;
+	r = row->r;
+	r.min.y = row->tag.fr.r.max.y+Border;
+	avail = Dx(r) - (row->ncol-nvis)*hiddenwid() - (row->ncol-1)*Border;
+	if(avail < nvis*(80+Scrollwid))
+		return;	// no room
+	draw(screen, r, display->white, nil, ZP);
+	rr = r;
+	rr.max.x = rr.min.x;
+	for(i=0; i<row->ncol; i++){
+		c = row->col[i];
+		rr.min.x = rr.max.x;
+		if(i > 0){
+			r2 = rr;
+			r2.max.x = rr.min.x+Border;
+			draw(screen, r2, display->black, nil, ZP);
+			rr.min.x = r2.max.x;
+		}
+		if(c->hidden)
+			w = hiddenwid();
+		else if(i == last)	// takes what is left
+			w = r.max.x - rr.min.x - (row->ncol-1-i)*(hiddenwid()+Border);
+		else
+			w = (vlong)c->savew*avail/tot;
+		rr.max.x = rr.min.x + w;
+		if(i == row->ncol-1)
+			rr.max.x = r.max.x;
+		colresize(c, rr);
+	}
+	for(i=0; i<row->ncol; i++){
+		c = row->col[i];
+		if(!c->hidden)
+			c->savew = 0;
+	}
+}
+
+// button 1 on a column box hides the column, or shows it again
+static void
+rowhidecol(Row *row, Column *c)
+{
+	int i, nvis;
+
+	if(c->hidden){
+		c->hidden = FALSE;
+		rowlayout(row);
+		return;
+	}
+	nvis = 0;
+	for(i=0; i<row->ncol; i++)
+		if(!row->col[i]->hidden)
+			nvis++;
+	if(nvis <= 1)
+		return;
+	c->savew = Dx(c->r);
+	c->hidden = TRUE;
+	rowlayout(row);
+}
+
+// button 3 on a column box hides all other columns,
+// or shows them all again if they are hidden.
+static void
+rowonlycol(Row *row, Column *c)
+{
+	int i, all, tot;
+	Column *d;
+
+	all = TRUE;
+	for(i=0; i<row->ncol; i++){
+		d = row->col[i];
+		if(d != c && !d->hidden)
+			all = FALSE;
+	}
+	if(all && !c->hidden){
+		for(i=0; i<row->ncol; i++)
+			row->col[i]->hidden = FALSE;
+		// the others get back their widths, c the rest
+		tot = 0;
+		for(i=0; i<row->ncol; i++)
+			if(row->col[i] != c)
+				tot += row->col[i]->savew;
+		c->savew = Dx(row->r) - tot;
+		if(c->savew < 80+Scrollwid)
+			c->savew = 80+Scrollwid;
+		rowlayout(row);
+		return;
+	}
+	for(i=0; i<row->ncol; i++){
+		d = row->col[i];
+		if(d != c && !d->hidden){
+			d->savew = Dx(d->r);
+			d->hidden = TRUE;
+		}
+	}
+	c->hidden = FALSE;
+	rowlayout(row);
+}
+
 void
 rowdragcol(Row *row, Column *c, int _0)
 {
@@ -196,8 +326,14 @@ rowdragcol(Row *row, Column *c, int _0)
 
   Found:
 	p = mouse->xy;
-	if((abs(p.x-op.x)<5 && abs(p.y-op.y)<5))
+	if((abs(p.x-op.x)<5 && abs(p.y-op.y)<5)){
+		// nemo: like window boxes, but for columns
+		if(b == 1)
+			rowhidecol(row, c);
+		else if(b == 4)
+			rowonlycol(row, c);
 		return;
+	}
 	if((i>0 && p.x<row->col[i-1]->r.min.x) || (i<row->ncol-1 && p.x>c->r.max.x)){
 		/* shuffle */
 		x = c->r.min.x;

@@ -30,6 +30,10 @@ acme
 	dump in their ctl file, like win) back in the column and
 	place they had, once the command sets the same dump string.
 
+	Button 1 on a column's layout box shrinks the column to a
+	narrow strip, or brings it back; button 3 shrinks all other
+	columns, or brings them back.
+
 	-L label sets the title of the window in the host window
 	system (default acme); writing to /mnt/acme/label changes it.
 
