@@ -72,16 +72,49 @@ if(~ $#ns 0){
 NAMESPACE=$ns
 acmedump=$DUMP
 
+# pids of processes with unix sockets in $NAMESPACE:
+# plumber, fontsrv, acme's 9pserve and the like
+fn nsprocs {
+	lsof -U -F pn >[2]/dev/null | awk -v 'ns='^$NAMESPACE^'/' -v 'me='^$pid '
+		/^p/ { p = substr($0, 2) }
+		/^n/ && index(substr($0, 2), ns) == 1 && p != me { print p }
+	' | sort -u
+}
+
+fn cleanup {
+	pids=($plumbpid $fontpid)
+	for(p in $pids)
+		pids=($pids `{pgrep -P $p})	# e.g., the 9pserve of plumber
+	pids=($pids `{nsprocs})
+	if(! ~ $#pids 0){
+		echo $name: killing $pids >[1=2]
+		kill $pids >[2]/dev/null
+		sleep 1
+	}
+	rm -f $NAMESPACE/*
+}
+
+# also clean up if we are told to quit (e.g., at logout)
+fn sighup {
+	cleanup
+	exit hangup
+}
+fn sigterm {
+	cleanup
+	exit term
+}
+
 mkdir -p $NAMESPACE
 chmod 700 $NAMESPACE
-rm -f $NAMESPACE/*
-
+# leftovers from an acme that did not clean up
 plumbpid=()
+fontpid=()
+cleanup
+
 if(! 9p stat plumb >/dev/null >[2=1]){
 	plumber -f &
 	plumbpid=$apid
 }
-fontpid=()
 if(! 9p stat font >/dev/null >[2=1]){
 	fontsrv &
 	fontpid=$apid
@@ -99,11 +132,5 @@ if(test -e $DUMP)
 	args=($args -l $DUMP)
 echo acme $args NAMESPACE'='$NAMESPACE acmedump'='$acmedump >[1=2]
 arch -arch $arch $PLAN9/bin/acme $args
-
-if(! ~ $#plumbpid 0)
-	kill $plumbpid
-if(! ~ $#fontpid 0)
-	kill $fontpid
-sleep 1
-rm -f $NAMESPACE/*
+cleanup
 exit ''
