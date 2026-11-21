@@ -290,7 +290,11 @@ drawentry(void)
 	draw(screen, screen->r, back, nil, ZP);
 	border(screen, screen->r, 2, bord, ZP);
 	r = insetrect(screen->r, Margin);
-	p = string(screen, Pt(r.min.x, r.min.y+Gap/2), high, ZP, font, prompt);
+	// the window may be taller than a line (a minimum size): center it
+	p = Pt(r.min.x, (r.min.y+r.max.y-font->height)/2);
+	if(p.y < r.min.y)
+		p.y = r.min.y;
+	p = string(screen, p, high, ZP, font, prompt);
 	p = string(screen, p, text, ZP, font, " ");
 	t = smprint("%.*S", nentry, entry);
 	p = string(screen, p, text, ZP, font, t);

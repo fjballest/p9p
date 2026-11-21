@@ -261,6 +261,12 @@ rpc_attach(Client *c, char *label, char *winsize)
 	r.size.width = fmin(Dx(wr), r.size.width);
 	r.size.height = fmin(Dy(wr), r.size.height);
 	r = [NSWindow contentRectForFrameRect:r styleMask:Winstyle];
+	// a small winsize leaves little or no room below the title bar;
+	// keep the window at least as large as its minimum size
+	if(r.size.width < 64)
+		r.size.width = 64;
+	if(r.size.height < 64)
+		r.size.height = 64;
 
 	NSWindow *win = [[NSWindow alloc]
 		initWithContentRect:r
@@ -575,6 +581,10 @@ rpc_resizewindow(Client *c, Rectangle r)
 		NSSize s;
 
 		s = [view convertSizeFromBacking:NSMakeSize(Dx(r), Dy(r))];
+		if(s.width < 64)
+			s.width = 64;
+		if(s.height < 64)
+			s.height = 64;
 		[view.win setContentSize:s];
 	});
 }
