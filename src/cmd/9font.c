@@ -24,6 +24,7 @@ struct Item
 {
 	char	*name;	// font file name, printed when chosen
 	char	*label;	// shown, in the font itself
+	char	*base;	// fontsrv font name, to change the size
 	Font	*f;
 	int	bad;	// can't open it: shown in the default font
 };
@@ -42,6 +43,10 @@ static int	rowh;		// height of a row
 static int	fancy;		// show each name in its font
 static int	idle = 1000;	// ms without input before showing the fonts
 static char	filter[128];
+static char	size[8] = "14";	// for fontsrv fonts
+static int	insize;		// typing the size, not the filter
+static int	nsrv;		// fontsrv fonts
+static Rectangle sizer;		// where the size is shown
 static int	tflag;
 static Image	*back, *high, *bord, *text, *htext;
 
@@ -53,7 +58,7 @@ usage(void)
 }
 
 static void
-additem(char *name, char *label)
+additem(char *name, char *label, char *base)
 {
 	if(nitems%64 == 0){
 		items = realloc(items, (nitems+64)*sizeof items[0]);
@@ -63,12 +68,13 @@ additem(char *name, char *label)
 	memset(&items[nitems], 0, sizeof items[0]);
 	items[nitems].name = name;
 	items[nitems].label = label;
+	items[nitems].base = base;
 	nitems++;
 }
 
-// the fonts known to fontsrv, at the given size
+// the fonts known to fontsrv, at the current size
 static void
-fontsrvitems(char *size)
+fontsrvitems(void)
 {
 	int p[2], pid;
 	Biobuf bin;
@@ -96,8 +102,8 @@ fontsrvitems(char *size)
 			free(l);
 			continue;
 		}
-		additem(smprint("/mnt/font/%s/%sa/font", l, size), smprint("%s %s", l, size));
-		free(l);
+		additem(smprint("/mnt/font/%s/%sa/font", l, size), smprint("%s %s", l, size), l);
+		nsrv++;
 	}
 	Bterm(&bin);
 	close(p[0]);
@@ -143,6 +149,33 @@ closefonts(void)
 			nopen--;
 		}
 	}
+}
+
+// use the new size for the fontsrv fonts
+static void
+resize(void)
+{
+	Item *it;
+	int i;
+
+	if(atoi(size) <= 0)
+		return;
+	for(i = 0; i < nitems; i++){
+		it = &items[i];
+		if(it->base == nil)
+			continue;
+		if(it->f != nil){
+			freefont(it->f);
+			it->f = nil;
+			nopen--;
+		}
+		it->bad = 0;
+		free(it->name);
+		free(it->label);
+		it->name = smprint("/mnt/font/%s/%sa/font", it->base, size);
+		it->label = smprint("%s %s", it->base, size);
+	}
+	rowh = font->height+Gap;
 }
 
 static int
@@ -254,11 +287,21 @@ redraw(void)
 	draw(screen, screen->r, back, nil, ZP);
 	border(screen, screen->r, 2, bord, ZP);
 	r = insetrect(screen->r, Margin);
-	p = string(screen, r.min, high, ZP, font, "font: ");
+	p = string(screen, r.min, insize ? bord : high, ZP, font, "font: ");
 	p = string(screen, p, text, ZP, font, filter);
-	draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
+	if(!insize)
+		draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
 	snprint(buf, sizeof buf, "(%d)", nshown);
-	string(screen, Pt(p.x+2*stringwidth(font, " "), p.y), bord, ZP, font, buf);
+	p = string(screen, Pt(p.x+2*stringwidth(font, " "), p.y), bord, ZP, font, buf);
+	if(nsrv > 0){
+		// Tab, or a click here, to type the size
+		sizer.min = Pt(p.x+2*stringwidth(font, " "), p.y);
+		p = string(screen, sizer.min, insize ? high : bord, ZP, font, "size: ");
+		p = string(screen, p, text, ZP, font, size);
+		if(insize)
+			draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
+		sizer.max = Pt(r.max.x, p.y+font->height);
+	}
 	r.min.y += font->height+Gap/2;
 	draw(screen, Rect(r.min.x, r.min.y, r.max.x, r.min.y+1), bord, nil, ZP);
 	for(j = 0; j < nvis; j++)
@@ -361,7 +404,7 @@ choose(int i)
 void
 main(int argc, char *argv[])
 {
-	char *label, *fontname, *size;
+	char *label, *fontname;
 	Event e;
 	Mouse m;
 	int i, n, buttons, ev;
@@ -371,10 +414,9 @@ main(int argc, char *argv[])
 
 	label = "9font";
 	fontname = nil;
-	size = "14";
 	ARGBEGIN{
 	case 's':
-		size = EARGF(usage());
+		snprint(size, sizeof size, "%s", EARGF(usage()));
 		break;
 	case 't':
 		tflag = 1;
@@ -396,9 +438,9 @@ main(int argc, char *argv[])
 	}ARGEND
 
 	for(i = 0; i < argc; i++)
-		additem(argv[i], argv[i]);
+		additem(argv[i], argv[i], nil);
 	if(argc == 0)
-		fontsrvitems(size);
+		fontsrvitems();
 	if(nitems == 0)
 		sysfatal("no fonts");
 	shown = malloc(nitems*sizeof shown[0]);
@@ -472,6 +514,13 @@ main(int argc, char *argv[])
 				if((m.buttons & 7) == 0)
 					break;
 			}
+			if((m.buttons & 7) && nsrv > 0 && ptinrect(m.xy, sizer)){
+				insize = !insize;
+				redraw();
+				while(emouse().buttons & 7)
+					;
+				break;
+			}
 			if(m.buttons & 7){
 				buttons = m.buttons;
 				if((i = rowat(m.xy)) >= 0 && i != sel)
@@ -507,6 +556,30 @@ main(int argc, char *argv[])
 			case Kesc:
 			case Kdel:
 				exits("cancel");
+			case '\t':
+				if(nsrv > 0){
+					insize = !insize;
+					redraw();
+				}
+				break;
+			}
+			if(insize){
+				// edit the size; the fonts change as it does
+				n = strlen(size);
+				if(r == '\b' && n > 0)
+					size[n-1] = 0;
+				else if(r == 0x15)
+					size[0] = 0;
+				else if(r >= '0' && r <= '9' && n < sizeof size-1){
+					size[n] = r;
+					size[n+1] = 0;
+				}else
+					break;
+				resize();
+				redraw();
+				break;
+			}
+			switch(r){
 			case '\b':
 				n = strlen(filter);
 				if(n > 0){
