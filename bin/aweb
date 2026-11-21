@@ -71,7 +71,7 @@ if(~ $#chrome 0){
 
 fn chrome {
 	$chrome --headless --disable-gpu --hide-scrollbars --no-first-run \
-		--user-data-dir'='$prof $* >[2]/dev/null
+		--user-data-dir'='$prof $* >>[2]$tmp.err
 }
 
 # window width in pixels
@@ -129,7 +129,7 @@ fn source {
 # render $url as wide as the window; with chrome, also
 # record the link boxes in $tmp.boxes
 fn render {
-	rm -f $tmp.png $tmp.boxes
+	rm -f $tmp.png $tmp.boxes $tmp.err
 	w=`{width}
 	if(~ $#chrome 1){
 		s=`{echo $zoom | awk '{print $1/100}'}
@@ -140,6 +140,12 @@ fn render {
 			page=file://$tmp.html
 		chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
 			--virtual-time-budget'='3000 --screenshot'='$tmp.png $page >/dev/null
+		if(! test -s $tmp.png && ! ~ $page $url){
+			# the copy did not work: show the page itself, without links
+			page=$url
+			chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
+				--screenshot'='$tmp.png $page >/dev/null
+		}
 		if(~ $page file://$tmp.html){
 			chrome --window-size'='$cw,$ch --virtual-time-budget'='3000 \
 				--dump-dom $page | awk '
@@ -150,9 +156,11 @@ fn render {
 		}
 	}
 	if not
-		$firefox --headless --window-size'='$w,$height --screenshot $tmp.png $url >/dev/null >[2=1]
+		$firefox --headless --window-size'='$w,$height --screenshot $tmp.png $url >/dev/null >[2]$tmp.err
+	rm -f $tmp.html
 	if(! test -s $tmp.png){
 		echo aweb: $url: cannot render >[1=2]
+		tail -5 $tmp.err >[1=2]
 		status=render
 	}
 	if not{
@@ -296,8 +304,9 @@ winctl dumpdir /
 echo -n ' Back Reload Links More Zoom+ Zoom- ' | winwrite tag
 winctl clean
 if(! render){
-	windel sure
-	exit render
+	# keep the window, to show why
+	{ echo aweb: $url: cannot render; cat $tmp.err } | winwrite body
+	winctl clean
 }
 wineventloop
-rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src
+rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src $tmp.err
