@@ -68,12 +68,18 @@ if(~ $#chrome 0){
 	}
 }
 
-# each run has its own profile (chrome refuses to share one),
-# and chrome is killed if it takes more than 30 seconds
+# chrome prof args: each call has its own profile (chrome refuses
+# to share one); pages that take long to load are shown as they
+# are after $wait ms, and chrome is killed after 30 seconds.
+wait=5000
 fn chrome {
+	prof=$tmp.$1
+	shift
 	perl -e 'alarm shift; exec @ARGV' 30 $chrome --headless --disable-gpu \
-		--hide-scrollbars --no-first-run --user-data-dir'='$tmp.prof $* >>[2]$tmp.err
-	pkill -f $tmp.prof >[2]/dev/null
+		--hide-scrollbars --no-first-run --no-default-browser-check \
+		--disable-extensions --disable-sync --disable-background-networking \
+		--mute-audio --timeout'='$wait --user-data-dir'='$prof $* >>[2]$tmp.err
+	pkill -f $prof >[2]/dev/null
 	status=''
 }
 
@@ -95,7 +101,7 @@ fn source {
 		cat `{echo $url | sed 's,^file://,,; s,[?#].*,,'} > $tmp.src >[2]/dev/null
 		base=$url
 	case *
-		base=`{curl -sL -A 'Mozilla/5.0' -o $tmp.src -w '%{url_effective}' $url >[2]/dev/null}
+		base=`{curl -sL --max-time 15 -A 'Mozilla/5.0' -o $tmp.src -w '%{url_effective}' $url >[2]/dev/null}
 		if(~ $#base 0)
 			base=$url
 	}
@@ -112,7 +118,7 @@ fn source {
 		END {
 			if(!done)
 				print "<base href=\"" base "\">"
-			print "<script>window.addEventListener(\"load\", function(){"
+			print "<script>function aweblinks(){"
 			print "var o = [];"
 			print "document.querySelectorAll(\"a[href]\").forEach(function(a){"
 			print "var rs = a.getClientRects();"
@@ -121,8 +127,11 @@ fn source {
 			print "});"
 			print "var p = document.createElement(\"aweblinks\");"
 			print "p.textContent = \"\\n\" + o.join(\"\\n\") + \"\\n\";"
+			print "var q = document.querySelector(\"aweblinks\"); if(q) q.remove();"
 			print "document.documentElement.appendChild(p);"
-			print "});</script>"
+			print "}"
+			print "document.addEventListener(\"DOMContentLoaded\", aweblinks);"
+			print "window.addEventListener(\"load\", aweblinks);</script>"
 		}' $tmp.src > $tmp.html
 		rm -f $tmp.src
 		status=''
@@ -141,21 +150,28 @@ fn render {
 		page=$url
 		if(source)
 			page=file://$tmp.html
-		chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
+		# the links, at the same time as the image
+		rm -f $tmp.dom
+		if(~ $page file://$tmp.html){
+			chrome domprof --window-size'='$cw,$ch --dump-dom $page > $tmp.dom &
+			dompid=$apid
+		}
+		chrome shotprof --force-device-scale-factor'='$s --window-size'='$cw,$ch \
 			--screenshot'='$tmp.png $page >/dev/null
+		if(~ $page file://$tmp.html){
+			wait $dompid
+			awk '
+				/<aweblinks>/ { on = 1; sub(/.*<aweblinks>/, "") }
+				on && /<\/aweblinks>/ { sub(/<\/aweblinks>.*/, ""); if(NF >= 5) print; exit }
+				on && NF >= 5 { gsub(/&amp;/, "\\&"); print }' $tmp.dom > $tmp.boxes
+			rm -f $tmp.dom
+		}
 		if(! test -s $tmp.png && ! ~ $page $url){
 			# the copy did not work: show the page itself, without links
 			page=$url
-			chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
+			rm -f $tmp.boxes
+			chrome shotprof --force-device-scale-factor'='$s --window-size'='$cw,$ch \
 				--screenshot'='$tmp.png $page >/dev/null
-		}
-		if(~ $page file://$tmp.html){
-			chrome --window-size'='$cw,$ch \
-				--dump-dom $page | awk '
-				/<aweblinks>/ { on = 1; sub(/.*<aweblinks>/, "") }
-				on && /<\/aweblinks>/ { sub(/<\/aweblinks>.*/, ""); if(NF >= 5) print; exit }
-				on && NF >= 5 { gsub(/&amp;/, "\\&"); print }' > $tmp.boxes
-			rm -f $tmp.html
 		}
 	}
 	if not
@@ -313,4 +329,4 @@ if(! render){
 }
 wineventloop
 rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src $tmp.err
-rm -rf $tmp.prof
+rm -rf $tmp.shotprof $tmp.domprof $tmp.dom

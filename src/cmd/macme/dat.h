@@ -416,6 +416,7 @@ struct Fid
 	int		nrpart;
 	uchar	rpart[UTFmax];
 	vlong	logoff;	// for putlog
+	int		imgwrite;	// macme: image opened for writing
 };
 
 

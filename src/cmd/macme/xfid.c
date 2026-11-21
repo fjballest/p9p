@@ -165,7 +165,8 @@ xfidopen(Xfid *x)
 			break;
 		case QWimage:
 			// macme: a new image replaces the old one on close
-			if((x->fcall.mode&3) != OREAD){
+			x->f->imgwrite = (x->fcall.mode&3) != OREAD;
+			if(x->f->imgwrite){
 				free(w->imgbuf);
 				w->imgbuf = nil;
 				w->nimgbuf = 0;
@@ -272,7 +273,9 @@ xfidclose(Xfid *x)
 			break;
 		case QWimage:
 			w->nopen[q]--;
-			if(w->nimgbuf > 0){
+			// only the writer's close shows the image (a reader,
+			// e.g. asking for the sizes, may close meanwhile)
+			if(x->f->imgwrite && w->nimgbuf > 0){
 				err = imgload(w);
 				if(err != nil)
 					warning(nil, "macme: image: %s\n", err);
