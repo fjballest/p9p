@@ -422,16 +422,22 @@ main(int argc, char *argv[])
 			m = e.mouse;
 			if(m.buttons & (8|16)){
 				// take all the wheel events pending and
-				// scroll once, so none are left when it stops
+				// scroll once, so none are left when it stops.
+				// devdraw on the mac sets other bits with 8 or 16
+				// (how much to scroll): they are not buttons.
 				n = 0;
 				for(;;){
 					if(m.buttons & 8)
 						n--;
-					else if(m.buttons & 16)
+					else
 						n++;
-					if((m.buttons & 7) || !ecanmouse())
+					if(!ecanmouse()){
+						m.buttons = 0;
 						break;
+					}
 					m = emouse();
+					if((m.buttons & (8|16)) == 0)
+						break;
 				}
 				scroll(n);
 				if((m.buttons & 7) == 0)
