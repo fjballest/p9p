@@ -101,8 +101,9 @@ macme, apdf, aimg (new, prototype)
 	The ctl message place moves a window to a column and height.
 	apascdb runs pascdb (the stepper of the pasc Pascal
 	compiler) with each view in its own window: source with
-	breakpoints, data, stack, memory, input files, and output
-	(typing gives input); Pict shows a view as pascdb's page
+	breakpoints, data, stack, memory, machine (registers,
+	operand stack and bytecode, with Stepi to run one
+	instruction), input files, and output (typing gives input); Pict shows a view as pascdb's page
 	draws it, with a headless Chrome. See macme(1).
 
 mac/Acme.app (new)
