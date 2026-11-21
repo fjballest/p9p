@@ -1,5 +1,6 @@
 #!/usr/local/plan9/bin/rc
-# aimg file - show an image in a macme window
+# aimg file - show an image in a macme window.
+# Zoom+ and Zoom- in the tag scale it (with ImageMagick's convert).
 . $PLAN9/lib/acme.rc
 ifs=' 	
 '
@@ -12,18 +13,59 @@ if(! ~ $#* 1){
 f=$1
 if(! ~ $f /*)
 	f=`{pwd}^/$f
+if(! test -r $f){
+	echo aimg: $f: cannot read >[1=2]
+	exit open
+}
+scale=100
+
+# write the image at $scale% to the window
+fn render {
+	if(! ~ $scale 100)
+		convert $f -resize $scale% png:- | png -t
+	if not switch($f){
+	case *.png *.PNG
+		png -t $f
+	case *.jpg *.jpeg *.JPG *.JPEG
+		jpg -t $f
+	case *.gif *.GIF
+		gif -t $f
+	case *.bit *.img
+		cat $f
+	case *
+		convert $f png:- | png -t
+	}
+}
+
+fn show {
+	render | winwrite image
+}
+
+fn event {
+	switch($2){
+	case x X
+		switch($9){
+		case Zoom+
+			scale=`{expr $scale '*' 5 / 4}
+			show
+		case Zoom-
+			if(! ~ $scale [0-9] 1[0-9]){
+				scale=`{expr $scale '*' 4 / 5}
+				show
+			}
+		case *
+			winwriteevent $*
+		}
+	case I
+		;	# a click on the image
+	case *
+		winwriteevent $*
+	}
+}
+
 newwindow
 winname $f
-switch($f){
-case *.png *.PNG
-	png -t $f
-case *.jpg *.jpeg *.JPG *.JPEG
-	jpg -t $f
-case *.gif *.GIF
-	gif -t $f
-case *.bit *.img
-	cat $f
-case *
-	convert $f png:- | png -t
-} | winwrite image
+echo -n ' Zoom+ Zoom- ' | winwrite tag
+show
 winctl clean
+wineventloop
