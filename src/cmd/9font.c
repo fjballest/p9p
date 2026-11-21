@@ -320,6 +320,12 @@ scroll(int n)
 		top = nshown-1;
 	if(top < 0)
 		top = 0;
+	// keep the selection on the screen
+	layout();
+	if(sel < top)
+		sel = top;
+	if(sel >= top+nvis)
+		sel = top+nvis-1;
 	redraw();
 }
 
@@ -414,13 +420,22 @@ main(int argc, char *argv[])
 		switch(event(&e)){
 		case Emouse:
 			m = e.mouse;
-			if(m.buttons & 8){
-				scroll(-1);
-				break;
-			}
-			if(m.buttons & 16){
-				scroll(1);
-				break;
+			if(m.buttons & (8|16)){
+				// take all the wheel events pending and
+				// scroll once, so none are left when it stops
+				n = 0;
+				for(;;){
+					if(m.buttons & 8)
+						n--;
+					else if(m.buttons & 16)
+						n++;
+					if((m.buttons & 7) || !ecanmouse())
+						break;
+					m = emouse();
+				}
+				scroll(n);
+				if((m.buttons & 7) == 0)
+					break;
 			}
 			if(m.buttons & 7){
 				buttons = m.buttons;
