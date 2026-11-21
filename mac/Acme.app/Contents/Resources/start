@@ -12,6 +12,7 @@
 #	font		font for acme (-f and -F)
 #	altfont		fixed width font (-F), defaults to $font
 #	acmeflags	flags for acme (default -a)
+#	acmeprog	program to run (default acme; e.g. macme)
 #	tabstop, prompt, acmeshell ...: anything else acme should see
 
 ifs='
@@ -31,6 +32,7 @@ DUMP=$home/acme.dump.$name
 font=()
 altfont=()
 acmeflags=-a
+acmeprog=acme
 tabstop=4
 prompt=('; ' '	')
 SHELL=$PLAN9/bin/rc
@@ -130,7 +132,7 @@ if(! ~ $#altfont 0)
 	args=($args -F $altfont)
 if(test -e $DUMP)
 	args=($args -l $DUMP)
-echo acme $args NAMESPACE'='$NAMESPACE acmedump'='$acmedump >[1=2]
-arch -arch $arch $PLAN9/bin/acme $args
+echo $acmeprog $args NAMESPACE'='$NAMESPACE acmedump'='$acmedump >[1=2]
+arch -arch $arch $PLAN9/bin/$acmeprog $args
 cleanup
 exit ''
