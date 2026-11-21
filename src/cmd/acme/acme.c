@@ -317,6 +317,7 @@ char *ignotes[] = {
 	"sys: ttin",
 	"sys: ttou",
 	"sys: tstp",
+	"sys: child",	// a child exited (e.g., fontsrv -pp); not a reason to quit
 	nil
 };
 
