@@ -1,0 +1,72 @@
+.TH 9MENU 1
+.SH NAME
+9menu \- choose an item from a menu in a window
+.SH SYNOPSIS
+.B 9menu
+[
+.B -t
+]
+[
+.B -f
+.I font
+]
+[
+.B -l
+.I label
+]
+[
+.B -W
+.I winsize
+]
+[
+.I item ...
+]
+.SH DESCRIPTION
+.I 9menu
+opens a window showing a menu, one line per
+.IR item ,
+and waits for the user to choose one.
+Without arguments, the items are read from standard input,
+one per line; empty lines are ignored.
+.PP
+Moving the mouse highlights the item under it;
+pressing and releasing any of buttons 1, 2 or 3 over an item chooses it.
+The scroll wheel, and the Page Up and Page Down keys, scroll menus
+too long for the window.
+The Up and Down arrows (or control-P and control-N) move the highlight,
+and Return chooses the highlighted item.
+Typing a digit from 1 to 9 chooses that item directly.
+Escape, Delete or
+.B q
+close the menu without choosing anything.
+.PP
+When an item is chosen,
+.I 9menu
+prints its number, counting from 1, on standard output, and exits
+with a null status.
+With
+.BR -t ,
+it prints the text of the item instead.
+If the menu is closed (including closing the window),
+nothing is printed and the exit status is non-null.
+.PP
+The window is sized to fit the items (up to 30 lines), unless
+.B -W
+gives its size, as in
+.IR 9term (1).
+.B -f
+selects the font and
+.B -l
+the window label (default
+.BR 9menu ).
+.SH EXAMPLES
+Ask which acme to start:
+.IP
+.EX
+n=`{9menu -t main fdp sot}
+if(~ $#n 1) acme -l $home/acme.dump.$n
+.EE
+.SH SOURCE
+.B \*9/src/cmd/9menu.c
+.SH SEE ALSO
+.IR menuhit (3)
