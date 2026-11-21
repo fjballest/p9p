@@ -559,7 +559,7 @@ extern char			*cputype;
 extern char			*objtype;
 extern char			*home;
 extern char			*acmeshell;
-extern char			*dumpfile;	/* default for Dump and Load: $acmedump */
+extern char			*dumpfile;	// default for Dump and Load: $acmedump
 extern char			*fontnames[2];
 extern Image		*tagcols[NCOL];
 extern Image		*textcols[NCOL];

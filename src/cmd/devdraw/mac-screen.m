@@ -604,15 +604,13 @@ rpc_resizewindow(Client *c, Rectangle r)
 	CGFloat s;
 	int n, b;
 
-	/*
-	 * nemo: report how far the wheel moved, not just the
-	 * direction, so acme can scroll faster when the wheel
-	 * (or a Magic Mouse swipe) moves faster.
-	 * Bit 8 or 16 gives the direction as usual; the delta,
-	 * shifted left by one and with bits 8 and 16 cleared,
-	 * is or'ed in. acme decodes it as buttons/4.
-	 * Deltas under one line are ignored, as before.
-	 */
+	// nemo: report how far the wheel moved, not just the
+	// direction, so acme can scroll faster when the wheel
+	// (or a Magic Mouse swipe) moves faster.
+	// Bit 8 or 16 gives the direction as usual; the delta,
+	// shifted left by one and with bits 8 and 16 cleared,
+	// is or'ed in. acme decodes it as buttons/4.
+	// Deltas under one line are ignored, as before.
 	s = [e scrollingDeltaY];
 	n = (short)s;
 	if(n == 0)
@@ -620,7 +618,7 @@ rpc_resizewindow(Client *c, Rectangle r)
 	b = n > 0 ? 8 : 16;
 	b |= (n<<1) & ~(8|16);
 	[self sendmouse:b];
-	/* release, as upstream does, so no button stays stuck down */
+	// release, as upstream does, so no button stays stuck down
 	[self sendmouse:0];
 }
 
