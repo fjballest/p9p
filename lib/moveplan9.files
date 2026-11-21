@@ -5,6 +5,8 @@ bin/9.rc
 bin/9fs
 bin/Getdir
 bin/adict
+bin/aimg
+bin/apdf
 bin/doctype
 bin/fossil/conf
 bin/ipso

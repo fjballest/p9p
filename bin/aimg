@@ -1,0 +1,29 @@
+#!/usr/local/plan9/bin/rc
+# aimg file - show an image in a macme window
+. $PLAN9/lib/acme.rc
+ifs=' 	
+'
+path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
+
+if(! ~ $#* 1){
+	echo 'usage: aimg file' >[1=2]
+	exit usage
+}
+f=$1
+if(! ~ $f /*)
+	f=`{pwd}^/$f
+newwindow
+winname $f
+switch($f){
+case *.png *.PNG
+	png -t $f
+case *.jpg *.jpeg *.JPG *.JPEG
+	jpg -t $f
+case *.gif *.GIF
+	gif -t $f
+case *.bit *.img
+	cat $f
+case *
+	convert $f png:- | png -t
+} | winwrite image
+winctl clean

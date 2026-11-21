@@ -1,0 +1,106 @@
+.TH MACME 1
+.SH NAME
+macme, apdf, aimg \- acme with image windows
+.SH SYNOPSIS
+.B macme
+[
+.I acme options
+]
+.PP
+.B apdf
+.I file
+[
+.I page
+]
+.PP
+.B aimg
+.I file
+.SH DESCRIPTION
+.I Macme
+is
+.IR acme (1)
+with one addition, as a prototype:
+the body of a window can show an image instead of text.
+Everything else, including its file system
+(it is posted as
+.B acme
+too, so
+.IR win ,
+.IR 9p (1)
+and other clients work unchanged), is the same as in
+.IR acme .
+.PP
+Each window directory has a write-only file
+.BR image .
+An
+.IR image (6),
+compressed or not, written to it is shown in the body
+when the file is closed, replacing any previous one.
+The ctl message
+.B noimage
+goes back to showing text.
+.PP
+The wheel, the scroll bar, and the arrow, page, Home and End keys
+scroll the image; typing does not change it.
+Clicking on the image sends an event
+.IP
+.EX
+MI\fIx y buttons\fP 0
+.EE
+.PP
+to the window's
+.B event
+file, with
+.I x
+and
+.I y
+the position in the image.
+.PP
+.I Apdf
+shows a page of a PDF
+.I file
+(the first by default) in a new window,
+using
+.IR mutool ,
+.IR pdftoppm ,
+or
+.IR gs ,
+whichever is found, and
+.IR png (1)
+to make the image.
+.BR Next ,
+.BR Prev ,
+.BR Zoom+
+and
+.B Zoom-
+in the tag move through the pages and change their size.
+.PP
+.I Aimg
+shows an image file (PNG, JPEG and GIF with the
+.IR jpg (1)
+programs, others with ImageMagick's
+.IR convert ).
+.SH EXAMPLE
+Show an image computed by a program:
+.IP
+.EX
+\&. $PLAN9/lib/acme.rc
+newwindow
+winname /tmp/plot
+plot ... | topng | png -t | winwrite image
+.EE
+.SH SOURCE
+.B \*9/src/cmd/macme
+.br
+.B \*9/bin/apdf
+.br
+.B \*9/bin/aimg
+.SH SEE ALSO
+.IR acme (1),
+.IR acme (4),
+.IR acmeevent (1),
+.IR jpg (1),
+.IR image (6)
+.SH BUGS
+It is a prototype: the image is kept in memory, the body text
+is hidden but kept, and there is no way to zoom in macme itself.

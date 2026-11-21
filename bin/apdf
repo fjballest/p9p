@@ -1,0 +1,94 @@
+#!/usr/local/plan9/bin/rc
+# apdf file [page] - show a PDF in a macme window, a page at a time.
+# Next, Prev and Zoom+ and Zoom- in the tag move and scale the pages.
+# Pages are rendered with mutool, pdftoppm, or gs, whichever is found.
+. $PLAN9/lib/acme.rc
+ifs=' 	
+'
+path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
+
+if(! ~ $#* 1 2){
+	echo 'usage: apdf file [page]' >[1=2]
+	exit usage
+}
+f=$1
+if(! ~ $f /*)
+	f=`{pwd}^/$f
+if(! test -r $f){
+	echo apdf: $f: cannot read >[1=2]
+	exit open
+}
+page=1
+if(~ $#* 2)
+	page=$2
+res=100
+tmp=/tmp/apdf.$pid
+
+fn has {
+	~ `{ls $path^/$1 >[2]/dev/null} ?*
+}
+
+# show $page at $res; fails if there is no such page
+fn render {
+	rm -f $tmp.png
+	if(has mutool)
+		mutool draw -q -r $res -o $tmp.png $f $page >[2]/dev/null
+	if not if(has pdftoppm)
+		pdftoppm -f $page -l $page -r $res -png -singlefile $f $tmp >[2]/dev/null
+	if not if(has gs)
+		gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='png16m -r$res \
+			-dFirstPage'='$page -dLastPage'='$page -sOutputFile'='$tmp.png $f >[2]/dev/null
+	if not{
+		echo apdf: no mutool, pdftoppm, or gs >[1=2]
+		exit render
+	}
+	if(! test -s $tmp.png){
+		rm -f $tmp.png
+		status=nopage
+	}
+	if not{
+		png -t $tmp.png | winwrite image
+		rm -f $tmp.png
+		status=''
+	}
+}
+
+fn event {
+	switch($2){
+	case x X
+		switch($9){
+		case Next
+			page=`{expr $page + 1}
+			if(! render)
+				page=`{expr $page - 1}
+		case Prev
+			if(! ~ $page 1){
+				page=`{expr $page - 1}
+				render
+			}
+		case Zoom+
+			res=`{expr $res '*' 5 / 4}
+			render
+		case Zoom-
+			res=`{expr $res '*' 4 / 5}
+			render
+		case *
+			winwriteevent $*
+		}
+	case I
+		;	# a click on the page
+	case *
+		winwriteevent $*
+	}
+}
+
+newwindow
+winname $f
+echo -n ' Next Prev Zoom+ Zoom- ' | winwrite tag
+winctl clean
+if(! render){
+	echo apdf: $f: no page $page >[1=2]
+	windel sure
+	exit nopage
+}
+wineventloop

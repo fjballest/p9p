@@ -65,6 +65,12 @@ rcmain
 	(-d ms), and print its file name. Typing filters the list;
 	Tab switches to typing the size. See 9font(1).
 
+macme, apdf, aimg (new, prototype)
+	macme is acme where a window body can show an image:
+	write an image(6) to /mnt/acme/N/image; clicks on it
+	come as MI events. apdf shows PDF pages (Next, Prev,
+	Zoom+, Zoom-), aimg shows image files. See macme(1).
+
 mac/Acme.app (new)
 	Double-click to choose which acme to start, each with its
 	own font, namespace, dump, plumber, and fontsrv, from
