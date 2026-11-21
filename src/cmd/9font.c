@@ -425,18 +425,20 @@ main(int argc, char *argv[])
 				// scroll once, so none are left when it stops.
 				// devdraw on the mac sets other bits with 8 or 16
 				// (how much to scroll): they are not buttons.
+				// It also sends a release after each wheel event:
+				// skip those and plain moves too.
 				n = 0;
 				for(;;){
 					if(m.buttons & 8)
 						n--;
-					else
+					else if(m.buttons & 16)
 						n++;
 					if(!ecanmouse()){
 						m.buttons = 0;
 						break;
 					}
 					m = emouse();
-					if((m.buttons & (8|16)) == 0)
+					if((m.buttons & (8|16)) == 0 && (m.buttons & 7) != 0)
 						break;
 				}
 				scroll(n);
