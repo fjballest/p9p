@@ -925,19 +925,25 @@ def machinetext(st, code):
 		if m['depth'] > len(m['stack']):
 			out.append('\t... %d more' % (m['depth'] - len(m['stack'])))
 		out.append('')
-	out.append('code: > is the instruction to run, - the rest of its line')
+	out.append('code: address, bytes (opcode, then argument), line, instruction;')
+	out.append('the instruction to run is marked >, the rest of its line -')
 	starts = code['starts']
 	pc = m['pc'] if m else -1
 	line = code['rows'][pc][0] if 0 <= pc < len(code['rows']) else None
-	for i, (ln, op, arg) in enumerate(code['rows']):
+	for i, r in enumerate(code['rows']):
+		ln, op, arg = r[:3]
+		# the instruction's bytes (opcode, then argument), if pascdb sends them
+		b = r[3] if len(r) > 3 else ''
+		b = [b[k:k + 2] for k in range(0, len(b), 2)]
+		b = ' '.join(b[:8]) + (' ..' if len(b) > 8 else '')
 		r = starts.get(str(i)) or starts.get(i)
 		if r:
 			out.append('%s:' % routinename(r))
 		mark = '>' if i == pc else ('-' if m and ln == line else ' ')
-		row = '%s %5d %4d  %-8s %s' % (mark, i, ln, op, arg)
+		row = '%s %5d  %-26s %4d  %-8s %s' % (mark, i, b, ln, op, arg)
 		if i == pc:
 			# the registers again, as the top is often out of sight
-			row = '%-36s fp=%s sp=%s stack: %s' % (row, hx(m['fp']), hx(m['sp']),
+			row = '%-64s fp=%s sp=%s stack: %s' % (row, hx(m['fp']), hx(m['sp']),
 				' '.join(reversed(m['stack'])) or 'empty')
 		out.append(row)
 	return out
