@@ -96,13 +96,19 @@ fn cleanup {
 	rm -f $NAMESPACE/*
 }
 
-# also clean up if we are told to quit (e.g., at logout)
+# also clean up if we are told to quit (e.g., at logout).
+# rc exports functions, so every shell started from acme (e.g.,
+# in win) has these too: only this script must clean up, or
+# Del on a win would kill the namespace and with it acme.
+startpid=$pid
 fn sighup {
-	cleanup
+	if(~ $pid $startpid)
+		cleanup
 	exit hangup
 }
 fn sigterm {
-	cleanup
+	if(~ $pid $startpid)
+		cleanup
 	exit term
 }
 
