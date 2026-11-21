@@ -61,6 +61,10 @@ libdraw
 lib9
 	getwd and cleanname show /Users/nemo/u as /u.
 
+	_sysfatal is declared as taking a va_list, like libthread's
+	threadsysfatal; on arm64 macOS threaded programs (9p, acme)
+	crashed in any sysfatal with arguments.
+
 rcmain
 	ifs is just newline by default; $home/lib/profile is read
 	only if $_prof is unset.
