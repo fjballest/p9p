@@ -193,7 +193,12 @@ so logins last.
 Each window keeps its Chrome running
 .RB ( awebcdp
 .BR -S ),
-so following a link does not wait for one to start.
+so following a link does not wait for one to start;
+it quits after five idle minutes.
+The Chrome window opened by
+.B Login
+must be quit (not just closed) once logged in: while it runs,
+starting Chrome on macOS only brings that one forward.
 Pages cannot be typed into: to log in to a site,
 .B Login
 (or option
