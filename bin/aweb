@@ -40,7 +40,6 @@ if(~ $#user 0)
 	user=$USER
 if(~ $#user 0)
 	user=`{id -un}
-prof=/tmp/aweb.$user.prof
 
 fn has {
 	~ `{ls $path^/$1 >[2]/dev/null} ?*
@@ -69,9 +68,13 @@ if(~ $#chrome 0){
 	}
 }
 
+# each run has its own profile (chrome refuses to share one),
+# and chrome is killed if it takes more than 30 seconds
 fn chrome {
-	$chrome --headless --disable-gpu --hide-scrollbars --no-first-run \
-		--user-data-dir'='$prof $* >>[2]$tmp.err
+	perl -e 'alarm shift; exec @ARGV' 30 $chrome --headless --disable-gpu \
+		--hide-scrollbars --no-first-run --user-data-dir'='$tmp.prof $* >>[2]$tmp.err
+	pkill -f $tmp.prof >[2]/dev/null
+	status=''
 }
 
 # window width in pixels
@@ -139,7 +142,7 @@ fn render {
 		if(source)
 			page=file://$tmp.html
 		chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
-			--virtual-time-budget'='3000 --screenshot'='$tmp.png $page >/dev/null
+			--screenshot'='$tmp.png $page >/dev/null
 		if(! test -s $tmp.png && ! ~ $page $url){
 			# the copy did not work: show the page itself, without links
 			page=$url
@@ -147,7 +150,7 @@ fn render {
 				--screenshot'='$tmp.png $page >/dev/null
 		}
 		if(~ $page file://$tmp.html){
-			chrome --window-size'='$cw,$ch --virtual-time-budget'='3000 \
+			chrome --window-size'='$cw,$ch \
 				--dump-dom $page | awk '
 				/<aweblinks>/ { on = 1; sub(/.*<aweblinks>/, "") }
 				on && /<\/aweblinks>/ { sub(/<\/aweblinks>.*/, ""); if(NF >= 5) print; exit }
@@ -310,3 +313,4 @@ if(! render){
 }
 wineventloop
 rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src $tmp.err
+rm -rf $tmp.prof
