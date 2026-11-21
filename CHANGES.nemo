@@ -98,7 +98,8 @@ macme, apdf, aimg (new, prototype)
 	Zoom-, Zoom!), and aweb shows web pages rendered by a
 	headless Chrome (clicks follow links; Links, Back,
 	Reload, More, Zoom+, Zoom-, and Login to log in to a site
-	in a Chrome window; cookies are kept in $home/lib/aweb).
+	in a Chrome window; cookies are kept in $home/lib/aweb;
+	each window keeps its headless Chrome running, so clicks are quick).
 	Horizontal swipes scroll images sideways.
 	The ctl message place moves a window to a column and height.
 	apascdb runs pascdb (the stepper of the pasc Pascal

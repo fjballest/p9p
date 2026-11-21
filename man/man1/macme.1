@@ -190,6 +190,10 @@ which loads the page itself (with its scripts and redirections)
 and keeps the cookies in
 .BR $home/lib/aweb/cookies ,
 so logins last.
+Each window keeps its Chrome running
+.RB ( awebcdp
+.BR -S ),
+so following a link does not wait for one to start.
 Pages cannot be typed into: to log in to a site,
 .B Login
 (or option
