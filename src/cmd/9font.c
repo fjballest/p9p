@@ -37,6 +37,7 @@ static int	vis[Maxvis];	// shown rows on the screen
 static Rectangle visr[Maxvis];
 static int	nvis;
 static int	nopen;
+static int	rowh;		// height of a row
 static char	filter[128];
 static int	tflag;
 static Image	*back, *high, *bord, *text, *htext;
@@ -114,6 +115,8 @@ itemfont(Item *it)
 		return font;
 	}
 	nopen++;
+	if(it->f->height+Gap > rowh)
+		rowh = it->f->height+Gap;
 	return it->f;
 }
 
@@ -187,19 +190,18 @@ listrect(void)
 	return r;
 }
 
-// place the rows from top on, opening their fonts
+// place the rows from top on
 static void
 layout(void)
 {
 	Rectangle r, lr;
-	int i, h;
+	int i;
 
 	lr = listrect();
 	nvis = 0;
 	r = lr;
 	for(i = top; i < nshown && nvis < Maxvis; i++){
-		h = itemfont(&items[shown[i]])->height+Gap;
-		r.max.y = r.min.y+h;
+		r.max.y = r.min.y+rowh;
 		if(r.max.y > lr.max.y && nvis > 0)
 			break;
 		vis[nvis] = shown[i];
@@ -225,8 +227,12 @@ drawrow(int j)
 		draw(screen, r, back, nil, ZP);
 		fg = text;
 	}
+	// until its font is loaded, show the name in the default font
 	replclipr(screen, 0, r);
-	string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), it->bad ? bord : fg, ZP, itemfont(it), it->label);
+	if(it->f == nil)
+		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), bord, ZP, font, it->label);
+	else
+		string(screen, Pt(r.min.x+Margin, r.min.y+Gap/2), fg, ZP, it->f, it->label);
 	replclipr(screen, 0, screen->r);
 }
 
@@ -253,6 +259,27 @@ redraw(void)
 		drawrow(j);
 	flushimage(display, 1);
 	closefonts();
+}
+
+// load the font of one row on the screen; 0 if none is missing
+static int
+loadone(void)
+{
+	int j, h;
+
+	for(j = 0; j < nvis; j++)
+		if(items[vis[j]].f == nil && !items[vis[j]].bad){
+			h = rowh;
+			itemfont(&items[vis[j]]);
+			if(rowh != h)
+				redraw();
+			else{
+				drawrow(j);
+				flushimage(display, 1);
+			}
+			return 1;
+		}
+	return 0;
 }
 
 void
@@ -373,11 +400,17 @@ main(int argc, char *argv[])
 	htext = back;
 	if(back == nil || high == nil || bord == nil)
 		sysfatal("allocimage: %r");
+	rowh = font->height+Gap;
+	itemfont(&items[shown[0]]);	// a guess at the row height
 	einit(Emouse|Ekeyboard);
 	redraw();
 
 	buttons = 0;
 	for(;;){
+		// fonts are loaded while nothing else happens,
+		// so scrolling and typing never wait for them
+		while(!ecanread(Emouse|Ekeyboard) && loadone())
+			;
 		switch(event(&e)){
 		case Emouse:
 			m = e.mouse;

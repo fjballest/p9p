@@ -40,7 +40,9 @@ with the
 given by
 .B -s
 (default 14).
-Fonts are opened only when shown, so long lists are fine.
+Fonts are opened only when shown, while nothing else is happening:
+until its font is loaded, a name is shown in the default font,
+so scrolling and typing do not wait for fonts to load.
 .PP
 Typing filters the list, keeping fonts with the typed text in their name
 (case is ignored);
