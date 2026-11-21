@@ -93,16 +93,6 @@ if(~ $#chrome 1){
 	mkdir -p $home/lib/aweb
 }
 
-# a chrome kept running for this window, so that
-# clicks do not wait for one to start each time
-fn startserver {
-	if(~ $#chrome 1){
-		AWEBCHROME=$chrome awebcdp -S $tmp.sock -c $cookies >[2]/dev/null &
-		serverpid=$apid
-	}
-}
-serverpid=()
-
 # open $url in a Chrome window, to log in there
 fn login {
 	if(~ $#chrome 1)
@@ -126,7 +116,10 @@ fn render {
 		s=`{echo $zoom | awk '{print $1/100}'}
 		cw=`{echo $w $zoom | awk '{print int($1*100/$2)}'}
 		ch=`{echo $height $zoom | awk '{print int($1*100/$2)}'}
-		u=`{AWEBCHROME=$chrome awebcdp -C $tmp.sock -c $cookies -s $s -w $wait \
+		# awebcdp keeps a chrome running for this window
+		# (until aweb is gone, or it is idle for a while), so
+		# that clicks do not wait for one to start each time
+		u=`{AWEBCHROME=$chrome awebcdp -C $tmp.sock -P $pid -c $cookies -s $s -w $wait \
 			-W $cw -H $ch -o $tmp.png -b $tmp.boxes $url >[2]$tmp.err}
 		# where redirections took us
 		if(~ $#u 1 && test -s $tmp.png)
@@ -286,13 +279,10 @@ echo -n $tag | winwrite tag
 winctl clean
 if(~ $login yes)
 	login
-startserver
 if(! render){
 	# keep the window, to show why
 	{ echo aweb: $url: cannot render; cat $tmp.err } | winwrite body
 	winctl clean
 }
 wineventloop
-if(! ~ $#serverpid 0)
-	kill $serverpid >[2]/dev/null
 rm -f $tmp.png $tmp.boxes $tmp.err $tmp.sock
