@@ -1,0 +1,76 @@
+.TH 9FONT 1
+.SH NAME
+9font \- choose a font, seeing each one
+.SH SYNOPSIS
+.B 9font
+[
+.B -t
+]
+[
+.B -s
+.I size
+]
+[
+.B -f
+.I font
+]
+[
+.B -l
+.I label
+]
+[
+.B -W
+.I winsize
+]
+[
+.I fontfile ...
+]
+.SH DESCRIPTION
+.I 9font
+opens a window listing fonts, each one written in the font itself,
+and prints the name of the font chosen.
+The fonts are the
+.I fontfile
+arguments or, when there are none, those served by
+.IR fontsrv (4),
+named
+.BI /mnt/font/ name / size a/font
+with the
+.I size
+given by
+.B -s
+(default 14).
+Fonts are opened only when shown, so long lists are fine.
+.PP
+Typing filters the list, keeping fonts with the typed text in their name
+(case is ignored);
+backspace and control-U edit the filter.
+The Up and Down arrows (or control-P and control-N), Page Up and Page Down,
+and the scroll wheel move through the list;
+Return chooses the highlighted font, and so does
+clicking on a font.
+Escape or Delete close the window without choosing anything,
+with a non-null exit status.
+.PP
+The font file name is printed on standard output; with
+.BR -t ,
+the name shown is printed instead.
+.B -f
+sets the font for the filter line,
+.B -l
+the window label, and
+.B -W
+the window size, as in
+.IR 9term (1).
+.SH EXAMPLES
+Start acme with a font chosen from those of the system:
+.IP
+.EX
+f=`{9font -s 16} && acme -f $f
+.EE
+.SH SOURCE
+.B \*9/src/cmd/9font.c
+.SH SEE ALSO
+.IR 9menu (1),
+.IR fontsrv (4),
+.IR font (7)
