@@ -3,7 +3,7 @@
  * A client writes an image(6) to the window's image file;
  * when the file is closed, the body shows it.  Scrolling
  * works as usual, and clicks on the image are sent to the
- * event file as "MI x y buttons 0 " (x and y in the image).
+ * event file as "MI x y 0 1 b" (x and y in the image, b the buttons).
  * The ctl message noimage goes back to text, and pagekeys
  * makes PgUp, PgDn, Home and End come as "KX" events for
  * pgup, pgdown, home and end instead of scrolling.
@@ -169,7 +169,9 @@ imgmouse(Window *w, Mouse *m)
 		return;
 	activewin = w;
 	p = addpt(addpt(subpt(m->xy, r.min), w->imgoff), w->img->r.min);
-	winevent(w, "I%d %d %d 0 \n", p.x, p.y, m->buttons & 7);
+	// the buttons go in the text: in the flag, 2 would mean
+	// an expansion follows (see acme(4))
+	winevent(w, "I%d %d 0 1 %d\n", p.x, p.y, m->buttons & 7);
 	waitup();
 }
 

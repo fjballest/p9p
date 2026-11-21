@@ -2,6 +2,7 @@
 # aweb [-h height] url - show a web page in a macme window.
 # The page is rendered as an image with a headless Chrome
 # (or Chromium, or Firefox), as wide as the window.
+# Clicking on a link follows it (button 2 opens a new window);
 # Links opens a window listing the page links (plumb them);
 # button 2 on a URL in the tag goes there; Back goes back;
 # Reload renders again; Zoom+ and Zoom- scale the page;
@@ -81,16 +82,72 @@ fn width {
 	echo $w
 }
 
-# render $url as wide as the window
+# the page source, with a base for relative names and a script
+# that lists the boxes of the links in the DOM (for --dump-dom),
+# so clicks on the page can follow them.
+fn source {
+	rm -f $tmp.src
+	switch($url){
+	case file://*
+		cat `{echo $url | sed 's,^file://,,; s,[?#].*,,'} > $tmp.src >[2]/dev/null
+		base=$url
+	case *
+		base=`{curl -sL -A 'Mozilla/5.0' -o $tmp.src -w '%{url_effective}' $url >[2]/dev/null}
+		if(~ $#base 0)
+			base=$url
+	}
+	if(! test -s $tmp.src)
+		status=nosource
+	if not{
+		awk -v 'base='$base '
+		!done && match(tolower($0), /<head[^>]*>/){
+			print substr($0, 1, RSTART+RLENGTH-1) "<base href=\"" base "\">" substr($0, RSTART+RLENGTH)
+			done = 1
+			next
+		}
+		{ print }
+		END {
+			if(!done)
+				print "<base href=\"" base "\">"
+			print "<script>window.addEventListener(\"load\", function(){"
+			print "var o = [];"
+			print "document.querySelectorAll(\"a[href]\").forEach(function(a){"
+			print "var rs = a.getClientRects();"
+			print "for(var i = 0; i < rs.length; i++){ var r = rs[i];"
+			print "if(r.width > 0 && r.height > 0) o.push([Math.round(r.left+scrollX), Math.round(r.top+scrollY), Math.round(r.right+scrollX), Math.round(r.bottom+scrollY), a.href].join(\" \")); }"
+			print "});"
+			print "var p = document.createElement(\"aweblinks\");"
+			print "p.textContent = \"\\n\" + o.join(\"\\n\") + \"\\n\";"
+			print "document.documentElement.appendChild(p);"
+			print "});</script>"
+		}' $tmp.src > $tmp.html
+		rm -f $tmp.src
+		status=''
+	}
+}
+
+# render $url as wide as the window; with chrome, also
+# record the link boxes in $tmp.boxes
 fn render {
-	rm -f $tmp.png
+	rm -f $tmp.png $tmp.boxes
 	w=`{width}
 	if(~ $#chrome 1){
 		s=`{echo $zoom | awk '{print $1/100}'}
 		cw=`{echo $w $zoom | awk '{print int($1*100/$2)}'}
 		ch=`{echo $height $zoom | awk '{print int($1*100/$2)}'}
+		page=$url
+		if(source)
+			page=file://$tmp.html
 		chrome --force-device-scale-factor'='$s --window-size'='$cw,$ch \
-			--screenshot'='$tmp.png $url >/dev/null
+			--virtual-time-budget'='3000 --screenshot'='$tmp.png $page >/dev/null
+		if(~ $page file://$tmp.html){
+			chrome --window-size'='$cw,$ch --virtual-time-budget'='3000 \
+				--dump-dom $page | awk '
+				/<aweblinks>/ { on = 1; sub(/.*<aweblinks>/, "") }
+				on && /<\/aweblinks>/ { sub(/<\/aweblinks>.*/, ""); if(NF >= 5) print; exit }
+				on && NF >= 5 { gsub(/&amp;/, "\\&"); print }' > $tmp.boxes
+			rm -f $tmp.html
+		}
 	}
 	if not
 		$firefox --headless --window-size'='$w,$height --screenshot $tmp.png $url >/dev/null >[2=1]
@@ -106,6 +163,23 @@ fn render {
 		winctl dump aweb -h $height $url
 		status=''
 	}
+}
+
+# the link at $1 $2 (image pixels), if any
+fn linkat {
+	if(test -s $tmp.boxes)
+		awk -v 'x='$1 -v 'y='$2 -v 'z='$zoom '
+		BEGIN { x = x*100/z; y = y*100/z }
+		$1 <= x && x < $3 && $2 <= y && y < $4 {
+			a = ($3-$1)*($4-$2)
+			if(best == "" || a < besta){
+				l = $0
+				sub(/^[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +/, "", l)
+				best = l
+				besta = a
+			}
+		}
+		END { if(best != "") print best }' $tmp.boxes
 }
 
 fn go {
@@ -168,7 +242,10 @@ fn showlinks {
 }
 
 fn event {
-	switch($2){
+	# F events are our own changes to the tag and body
+	if(~ $1 F)
+		status=''
+	if not switch($2){
 	case x X
 		switch($9){
 		case Back
@@ -198,7 +275,16 @@ fn event {
 			winwriteevent $*
 		}
 	case I
-		;	# a click on the page
+		# a click on the page: B1 or B3 follows a link,
+		# B2 opens it in a new window
+		l=`{linkat $3 $4}
+		if(! ~ $#l 0){
+			if(~ $9 2){
+				aweb -h $height $l &
+			}
+			if not
+				go $l
+		}
 	case *
 		winwriteevent $*
 	}
@@ -214,4 +300,4 @@ if(! render){
 	exit render
 }
 wineventloop
-rm -f $tmp.png
+rm -f $tmp.png $tmp.boxes $tmp.html $tmp.src

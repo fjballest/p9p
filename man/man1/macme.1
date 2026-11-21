@@ -81,7 +81,7 @@ both set, button 1 set for left, and the amount shifted left 5 bits.
 Clicking on the image sends an event
 .IP
 .EX
-MI\fIx y buttons\fP 0
+MI\fIx y\fP 0 1 \fIb\fP
 .EE
 .PP
 to the window's
@@ -90,7 +90,11 @@ file, with
 .I x
 and
 .I y
-the position in the image.
+the position in the image and
+.I b
+the buttons (1, 2, 4), as the event text, so that
+.IR acmeevent (1)
+reports it as the text.
 .PP
 .I Apdf
 shows a page of a PDF
@@ -138,6 +142,9 @@ pixels tall (4000 by default), with a headless Chrome or Chromium
 if set), or Firefox.
 .B Links
 opens a window with the links in the page, to be plumbed;
+clicking on a link with button 1 or 3 follows it, and button 2
+opens it in a new window (the link boxes come from running a
+script in the page; without Chrome, links are not clickable);
 button 2 on a URL in the tag shows it;
 .B Back
 goes back,
@@ -149,7 +156,6 @@ doubles the height, and
 and
 .B Zoom-
 scale the page.
-Clicks on the page do not follow links.
 .PP
 All of them write
 .B dumpdir
