@@ -573,12 +573,15 @@ def memtext(st, db):
 			name(f['ret']['a'], 'ret ' + f['routine'])
 	for h in s['heap']:
 		name(h['a'], '^' + h['t'])
+	m = st.get('machine')
+	if m:
+		name(m['fp'], '<-fp')
 	reg = s['regions']
 	sp = reg['sp']
 	ranges = [(reg['used'][0], reg['used'][1], 'globals and stack')]
 	for h in s['heap']:
 		ranges.append((h['a'], h['a'] + h['s'], 'heap: ^%s, new at line %d' % (h['t'], h['line'])))
-	out = ['Bytes from %s on are above the stack pointer (free stack).' % hx(sp), '']
+	out = ['Bytes from %s on are above the stack pointer (free stack); <-fp marks the frame pointer.' % hx(sp), '']
 	for lo, hi, what in ranges:
 		out.append('%s' % what)
 		lo &= ~15
@@ -613,7 +616,7 @@ def memtext(st, db):
 
 # --- the windows
 
-CTLS = 'Step Play Pause Cont Restart Quit'
+CTLS = 'Step Stepi Play Pause Cont Restart Quit'
 
 
 class View:
@@ -741,7 +744,7 @@ class View:
 		if cmd == 'Quit':
 			db.quit()
 			return True
-		m = {'Step': 'step', 'Play': 'play', 'Pause': 'pause', 'Cont': 'run'}
+		m = {'Step': 'step', 'Stepi': 'stepi', 'Play': 'play', 'Pause': 'pause', 'Cont': 'run'}
 		if cmd in m:
 			db.cmd(m[cmd])
 			return True
@@ -778,7 +781,7 @@ class View:
 class SourceView(View):
 	suffix = 'pascdb'
 	place = (-2, 0)
-	tagtext = 'Break Speed Data Stack Mem Files Out'
+	tagtext = 'Break Speed Data Stack Mem Machine Files Out'
 
 	def __init__(self, app, src):
 		self.src = src
@@ -839,7 +842,10 @@ def statustext(st):
 	names = {'paused': 'paused', 'running': 'running', 'input': 'waiting for input',
 		'finished': 'finished', 'starting': 'starting'}
 	t = names.get(st['status'], st['status'])
-	if s and st['status'] != 'finished':
+	m = st.get('machine')
+	if m and m.get('atinstr'):
+		t += ' at instruction %d' % m['pc']
+	elif s and st['status'] != 'finished':
 		t += ' at line %d, column %d' % (s['line'], s['col'])
 	if st['status'] == 'finished':
 		t += ', exit status %s' % st['exitcode']
@@ -890,6 +896,77 @@ class MemView(View):
 		return memtext(st, self.app.db)
 
 
+def routinename(r):
+	return r['routine'] if r['kind'] == 'program' else '%s %s' % (r['kind'], r['routine'])
+
+
+def machinetext(st, code):
+	"""The registers, the operand stack and the bytecode."""
+	m = st.get('machine')
+	out = []
+	if not m:
+		out.append('The program is not stopped.')
+		out.append('')
+	else:
+		rows = code['rows']
+		pc = m['pc']
+		ins = ''
+		if 0 <= pc < len(rows):
+			ins = '%s %s' % (rows[pc][1], rows[pc][2])
+		out.append('registers%s' % (' (stopped at an instruction)' if m['atinstr'] else ''))
+		out.append('\tpc  %d\t%s, in %s' % (pc, ins.strip(), routinename(m)))
+		out.append('\tfp  %s\twhere the data of the current call begins' % hx(m['fp']))
+		out.append('\tsp  %s\twhere it ends' % hx(m['sp']))
+		out.append('operand stack, top first (%d)' % m['depth'])
+		if not m['stack']:
+			out.append('\tempty')
+		for v in reversed(m['stack']):
+			out.append('\t' + v)
+		if m['depth'] > len(m['stack']):
+			out.append('\t... %d more' % (m['depth'] - len(m['stack'])))
+		out.append('')
+	out.append('code: > is the instruction to run, - the rest of its line')
+	starts = code['starts']
+	pc = m['pc'] if m else -1
+	line = code['rows'][pc][0] if 0 <= pc < len(code['rows']) else None
+	for i, (ln, op, arg) in enumerate(code['rows']):
+		r = starts.get(str(i)) or starts.get(i)
+		if r:
+			out.append('%s:' % routinename(r))
+		mark = '>' if i == pc else ('-' if m and ln == line else ' ')
+		row = '%s %5d %4d  %-8s %s' % (mark, i, ln, op, arg)
+		if i == pc:
+			# the registers again, as the top is often out of sight
+			row = '%-36s fp=%s sp=%s stack: %s' % (row, hx(m['fp']), hx(m['sp']),
+				' '.join(reversed(m['stack'])) or 'empty')
+		out.append(row)
+	return out
+
+
+class MachineView(View):
+	"""pc, fp, sp, the operand stack and the bytecode."""
+	place = (-2, 55)
+	suffix = 'machine'
+
+	def __init__(self, app):
+		super().__init__(app)
+		self.code = None
+
+	def text(self, st):
+		if self.code is None:
+			self.code = self.app.db.get('code')
+		return machinetext(st, self.code)
+
+	def update(self, st):
+		super().update(st)
+		# keep the instruction to run in sight
+		if self.lines and not self.pict:
+			for i, l in enumerate(self.lines):
+				if l.startswith('> '):
+					self.win.show('%d' % (i + 1))
+					break
+
+
 class FilesView(View):
 	kind = 'files'
 	place = (-1, 85)
@@ -902,7 +979,7 @@ class FilesView(View):
 
 class OutView(View):
 	"""The program's output; lines typed at the end go to its input."""
-	place = (-2, 70)
+	place = (-2, 82)
 	suffix = 'out'
 	tagtext = 'EOF'
 
@@ -979,7 +1056,7 @@ class OutView(View):
 		return super().execute(e)
 
 
-VIEWS = {'Data': DataView, 'Stack': StackView, 'Mem': MemView, 'Files': FilesView, 'Out': OutView}
+VIEWS = {'Data': DataView, 'Stack': StackView, 'Mem': MemView, 'Machine': MachineView, 'Files': FilesView, 'Out': OutView}
 
 
 # --- pictures with a headless Chrome
@@ -1071,7 +1148,7 @@ class App:
 		self.views = []
 		self.source = SourceView(self, src)
 		self.views.append(self.source)
-		for name in ('Data', 'Stack', 'Mem', 'Out'):
+		for name in ('Data', 'Stack', 'Mem', 'Machine', 'Out'):
 			self.open(name, False)
 		# in macme, source and output in a column, the rest in the next
 		# one: first at the end of the column, in order, then where

@@ -216,7 +216,22 @@ The stack
 and memory
 .RB ( +mem )
 windows show the stack frames slot by slot and a hex dump
-of the memory in use.
+of the memory in use, with
+.B <-fp
+at the frame pointer.
+The machine window
+.RB ( +machine )
+shows the registers of pasc's machine
+.RB ( pc ,
+.BR fp ,
+.BR sp ),
+the operand stack, top first, and the bytecode, one instruction
+per row with its address and source line;
+.B >
+marks the instruction to run, with the registers repeated next to it,
+and
+.B -
+the other instructions of its line.
 The output window
 .RB ( +out )
 shows what the program writes; lines typed at its end are its input,
@@ -228,13 +243,18 @@ in the source tag opens a window with the input files and their
 read positions;
 .BR Data ,
 .BR Stack ,
-.B Mem
+.BR Mem ,
+.B Machine
 and
 .B Out
 open those windows again after
 .BR Del .
 Every tag has
 .BR Step ,
+.B Stepi
+(run one machine instruction;
+.B Step
+goes back to whole lines),
 .BR Play ,
 .BR Pause ,
 .B Cont
@@ -249,7 +269,7 @@ sets the delay of
 After each step the windows show the first line that changed, selected.
 In
 .IR macme ,
-the source and output windows go to the second column from the right,
+the source, machine and output windows go to the second column from the right,
 and the others to the rightmost one.
 .B Pict
 in the data, stack, memory or files window shows that view as the
