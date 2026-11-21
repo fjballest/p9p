@@ -61,6 +61,20 @@ selects the font and
 the window label (default
 .BR 9menu ).
 .PP
+An
+.I item
+of the form
+.IB label " !" command
+shows only
+.IR label ;
+choosing it runs
+.I command
+with
+.IR rc (1)
+instead, which prints whatever it prints, and
+.I 9menu
+exits with its status.
+.PP
 With
 .BR -i ,
 .I 9menu
@@ -76,6 +90,16 @@ backspace, control-U (erase all) and control-W (erase a word) edit it.
 Tab, the Down arrow or control-N select the next field, and
 the Up arrow or control-P the previous one;
 clicking on a field selects it too.
+A field given as
+.IB prompt " !" command
+(or
+.IB prompt = text " !" command\fR)
+has its prompt underlined:
+clicking on the prompt runs
+.I command
+with
+.IR rc (1)
+and sets the field to the first line it prints, if any.
 Return prints the text of each field, one per line, in order,
 with
 .B _
@@ -102,7 +126,15 @@ ifs='
 x=`{9menu -i 'Name:=talk' 'Font:=/mnt/font/Consolas/18a/font'}
 if(~ $#x 2) echo name $x(1) font $x(2)
 .EE
+.PP
+Ask for a name and a font, choosing the font with
+.IR 9font (1):
+.IP
+.EX
+x=`{9menu -i 'Name:' 'Font: !9font'}
+.EE
 .SH SOURCE
 .B \*9/src/cmd/9menu.c
 .SH SEE ALSO
+.IR 9font (1),
 .IR menuhit (3)

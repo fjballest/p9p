@@ -25,6 +25,7 @@ static int	top;		// first item shown
 static int	tflag;
 static int	iflag;		// a form: items are prompts for text fields
 static Rune	*val[Maxitems];	// -i: text of each field
+static char	*cmd[Maxitems];	// item!cmd: command run for the item
 static int	nval[Maxitems];
 static Image	*back, *high, *bord, *text, *htext;
 
@@ -45,6 +46,12 @@ additem(char *s)
 
 	if(nitems >= Maxitems)
 		sysfatal("too many items");
+	if((p = strchr(s, '!')) != nil){
+		*p = 0;
+		cmd[nitems] = p+1;
+		while(p > s && (p[-1] == ' ' || p[-1] == '\t'))
+			*--p = 0;
+	}
 	if(iflag){
 		val[nitems] = malloc(Maxval*sizeof(Rune));
 		if(val[nitems] == nil)
@@ -224,6 +231,11 @@ choose(int i)
 {
 	if(i < 0 || i >= nitems)
 		return;
+	if(cmd[i] != nil){
+		// the command prints what it likes, and its status is ours
+		execlp("rc", "rc", "-c", cmd[i], nil);
+		sysfatal("exec rc: %r");
+	}
 	if(tflag)
 		print("%s\n", items[i]);
 	else
@@ -347,10 +359,53 @@ drawfield(int i)
 	pw = promptwidth();
 	p = Pt(r.min.x+pw-stringwidth(font, items[i]), r.min.y+Gap/2);
 	string(screen, p, i == sel ? high : bord, ZP, font, items[i]);
+	if(cmd[i] != nil)	// underlined: click it to run the command
+		draw(screen, Rect(p.x, p.y+font->ascent+1, r.min.x+pw, p.y+font->ascent+2),
+			i == sel ? high : bord, nil, ZP);
 	p.x = r.min.x+pw+stringwidth(font, " ");
 	p = runestringn(screen, p, text, ZP, font, val[i], nval[i]);
 	if(i == sel)
 		draw(screen, Rect(p.x, p.y, p.x+2, p.y+font->height), text, nil, ZP);
+}
+
+// run the command of field i and set the field to the
+// first line it prints, if any
+static void
+runcmd(int i)
+{
+	int p[2], pid, n, m;
+	char buf[1024], *e;
+
+	if(pipe(p) < 0)
+		return;
+	switch(pid = fork()){
+	case -1:
+		close(p[0]);
+		close(p[1]);
+		return;
+	case 0:
+		close(p[0]);
+		dup(p[1], 1);
+		close(p[1]);
+		execlp("rc", "rc", "-c", cmd[i], nil);
+		_exits("exec");
+	}
+	close(p[1]);
+	n = 0;
+	while(n < sizeof buf-1 && (m = read(p[0], buf+n, sizeof buf-1-n)) > 0)
+		n += m;
+	close(p[0]);
+	while(waitpid() != pid)
+		;
+	buf[n] = 0;
+	if((e = strchr(buf, '\n')) != nil)
+		*e = 0;
+	if(buf[0] == 0)
+		return;
+	e = buf;
+	for(n = 0; *e != 0 && n < Maxval; n++)
+		e += chartorune(&val[i][n], e);
+	nval[i] = n;
 }
 
 // run the -i form: edit the fields, print them on Return
@@ -370,8 +425,16 @@ doform(void)
 				scroll(-1);
 			else if(m.buttons & 16)
 				scroll(1);
-			else if((m.buttons & 7) && itemat(m.xy) >= 0)
-				setsel(itemat(m.xy));
+			else if((m.buttons & 7) && (i = itemat(m.xy)) >= 0){
+				setsel(i);
+				// a click on the prompt runs its command
+				if(cmd[i] != nil && m.xy.x < itemrect(i).min.x+promptwidth()){
+					while(emouse().buttons & 7)
+						;
+					runcmd(i);
+					redraw();
+				}
+			}
 			break;
 		case Ekeyboard:
 			switch(e.kbdc){

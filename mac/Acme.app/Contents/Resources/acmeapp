@@ -56,7 +56,7 @@ fn newacme {
 	f=`{sed -n 's/^font=//p' $dir/$last >[2]/dev/null | sed 1q}
 	if(~ $#f 0)
 		f=/mnt/font/Consolas-Bold/14a/font
-	x=`{9menu $mflags -i 'Name:' 'Font:='^$f}
+	x=`{9menu $mflags -i 'Name:' 'Font:='^$f^' !9font'}
 	if(~ $#x 0)
 		status=cancel
 	if not if(~ $x(1) _ || ~ $x(2) _)
