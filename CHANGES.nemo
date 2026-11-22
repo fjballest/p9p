@@ -62,6 +62,8 @@ devdraw (macOS)
 	Dock icon and its place in Command-Tab when the Dock
 	restarts; an unbundled devdraw vanished from both.
 
+	The Dock icon is spaceglenda, as in the mac/*.app bundles.
+
 libdraw
 	On macOS, runs mac/Devdraw.app's devdraw if it is there
 	and $DEVDRAW is not set.
