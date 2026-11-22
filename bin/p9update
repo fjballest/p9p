@@ -1,0 +1,111 @@
+#!/bin/sh
+# p9update [-n] [pr ...] - merge pull requests and bring $PLAN9 up to date.
+#
+# Merges each pull request given (by number, in the repository of
+# origin, with gh), pulls the branch from origin into $PLAN9 (a git
+# clone; it must be on master with no uncommitted changes to tracked
+# files), and rebuilds and installs what the pulled commits changed:
+#	src/lib*, include	everything (cd src; mk install)
+#	src/.../x.c in a dir	built with mkmany: mk x.install there
+#	any other file in src	mk install in the nearest dir with a mkfile
+# Scripts in bin, man pages, and mac/*.app need no building.
+# With -n, it says what it would do, and does nothing.
+
+PLAN9=${PLAN9:-/usr/local/plan9}
+export PLAN9
+PATH=$PLAN9/bin:$PATH
+export PATH
+
+n=
+if [ "$1" = -n ]; then
+	n=echo
+	shift
+fi
+for pr in "$@"; do
+	case $pr in
+	*[!0-9]*|'')
+		echo 'usage: p9update [-n] [pr ...]' >&2
+		exit 2
+	esac
+done
+
+die() { echo "p9update: $*" >&2; exit 1; }
+run() {
+	echo "% $*"
+	[ -n "$n" ] && return 0
+	"$@"
+}
+
+cd "$PLAN9" || die "no $PLAN9"
+git rev-parse --git-dir >/dev/null 2>&1 || die "$PLAN9 is not a git clone"
+br=$(git symbolic-ref --short HEAD 2>/dev/null)
+[ "$br" = master ] || die "$PLAN9 is on ${br:-a detached HEAD}, not master"
+git diff --quiet HEAD -- || die "$PLAN9 has uncommitted changes (git status)"
+
+if [ $# -gt 0 ]; then
+	command -v gh >/dev/null || die "gh is needed to merge (brew install gh; gh auth login)"
+	repo=$(git remote get-url origin | sed -E 's,^(https://github.com/|git@github.com:),,; s,\.git$,,')
+	for pr in "$@"; do
+		run gh pr merge "$pr" --repo "$repo" --merge --delete-branch || die "cannot merge #$pr"
+	done
+fi
+
+old=$(git rev-parse HEAD)
+run git pull --ff-only origin master || die "cannot pull"
+new=$(git rev-parse HEAD)
+if [ -n "$n" ]; then
+	# what a pull would bring
+	git fetch -q origin master && new=$(git rev-parse FETCH_HEAD)
+fi
+if [ "$old" = "$new" ]; then
+	echo "p9update: up to date"
+	exit 0
+fi
+git log --oneline "$old..$new"
+changed=$(git diff --name-only "$old" "$new")
+
+# the dir of a file with a mkfile, going up from it (within src)
+mkdir_of() {
+	d=$(dirname "$1")
+	while [ "$d" != . ] && [ "$d" != src ] && [ ! -f "$d/mkfile" ]; do
+		d=$(dirname "$d")
+	done
+	echo "$d"
+}
+
+if echo "$changed" | grep -Eq '^(include/|src/lib|src/mk)'; then
+	targets='src install'
+else
+	targets=$(echo "$changed" | grep '^src/' | while read -r f; do
+		d=$(mkdir_of "$f")
+		case $d in .|src) continue; esac
+		b=$(basename "$f")
+		if [ "$(dirname "$f")" = "$d" ] && grep -q 'mkmany' "$d/mkfile"; then
+			case $b in
+			*.c|*.y|*.lx)
+				echo "$d ${b%.*}.install"
+				continue
+			esac
+			echo "$d many-install"
+		else
+			echo "$d install"
+		fi
+	done | sort -u)
+fi
+
+status=0
+if [ -n "$targets" ]; then
+	echo "$targets" | {
+		while read -r d t; do
+			echo "% cd $d; mk $t"
+			[ -n "$n" ] && continue
+			(cd "$PLAN9/$d" && mk "$t") || { echo "p9update: $d: mk $t failed" >&2; status=1; }
+		done
+		exit $status
+	}
+	status=$?
+fi
+if echo "$changed" | grep -q '^mac/.*\.app/'; then
+	echo "p9update: mac apps changed; they run from $PLAN9/mac (restart them to use the new ones)"
+fi
+exit $status
