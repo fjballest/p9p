@@ -120,6 +120,12 @@ mac/Acme.app (new)
 	killed. Logs to /tmp/acmeapp.$user.log. The OS window
 	is titled "Acme name". A profile can set acmeprog=macme.
 
+bin/p9update (new)
+	p9update [-n] [pr ...] merges the given pull requests (with
+	gh), pulls master from origin into $PLAN9, and runs mk only
+	where the pulled commits changed sources (all of src when a
+	library or include file changed). -n shows what it would do.
+
 Style
 	Comments added in acme, devdraw, and the new programs use
 	//, keeping /* */ for commenting out code.
