@@ -1,5 +1,5 @@
 #!/bin/sh
-# p9update [-n] [pr ...] - merge pull requests and bring $PLAN9 up to date.
+# p9update [-n] [-s commit] [pr ...] - merge pull requests and bring $PLAN9 up to date.
 #
 # Merges each pull request given (by number, in the repository of
 # origin, with gh), pulls the branch from origin into $PLAN9 (a git
@@ -17,22 +17,36 @@
 # restored before pulling, and the files in lib/moveplan9.files are
 # rewritten again after it; any other local change makes it stop.
 # With -n, it says what it would do, and does nothing.
+# With -s, it also builds what changed since commit (e.g., HEAD~3,
+# to redo builds that failed).
 
 PLAN9=${PLAN9:-/usr/local/plan9}
 export PLAN9
 PATH=$PLAN9/bin:$PATH
 export PATH
 
+usage() { echo 'usage: p9update [-n] [-s commit] [pr ...]' >&2; exit 2; }
 n=
-if [ "$1" = -n ]; then
-	n=echo
-	shift
-fi
+since=
+while :; do
+	case $1 in
+	-n)
+		n=echo
+		shift;;
+	-s)
+		[ $# -ge 2 ] || usage
+		since=$2
+		shift 2;;
+	-*)
+		usage;;
+	*)
+		break;;
+	esac
+done
 for pr in "$@"; do
 	case $pr in
 	*[!0-9]*|'')
-		echo 'usage: p9update [-n] [pr ...]' >&2
-		exit 2
+		usage
 	esac
 done
 
@@ -81,6 +95,9 @@ if [ -n "$n" ]; then
 	# what a pull would bring
 	git fetch -q origin master && new=$(git rev-parse FETCH_HEAD)
 fi
+if [ -n "$since" ]; then
+	old=$(git rev-parse --verify -q "$since^{commit}") || die "$since: no such commit"
+fi
 if [ "$old" = "$new" ]; then
 	echo "p9update: up to date"
 	exit 0
@@ -97,6 +114,28 @@ mkdir_of() {
 	echo "$d"
 }
 
+# what to build for a changed file in src. Not inline in the
+# $(...) below: bash 3.2 (macOS /bin/sh) takes the ) of a case
+# pattern there as the end of the $(.
+target_of() {
+	d=$(mkdir_of "$1")
+	case $d in
+	.|src)
+		return;;
+	esac
+	b=$(basename "$1")
+	if [ "$(dirname "$1")" = "$d" ] && grep -q 'mkmany' "$d/mkfile"; then
+		case $b in
+		*.c|*.y|*.lx)
+			echo "$d ${b%.*}.install"
+			return;;
+		esac
+		echo "$d many-install"
+	else
+		echo "$d install"
+	fi
+}
+
 if echo "$changed" | grep -Eq '^(include/|src/mk)'; then
 	targets='src -a install'
 elif echo "$changed" | grep -Eq '^src/lib'; then
@@ -104,19 +143,7 @@ elif echo "$changed" | grep -Eq '^src/lib'; then
 		echo 'src/cmd -k -a install')
 else
 	targets=$(echo "$changed" | grep '^src/' | while read -r f; do
-		d=$(mkdir_of "$f")
-		case $d in .|src) continue; esac
-		b=$(basename "$f")
-		if [ "$(dirname "$f")" = "$d" ] && grep -q 'mkmany' "$d/mkfile"; then
-			case $b in
-			*.c|*.y|*.lx)
-				echo "$d ${b%.*}.install"
-				continue
-			esac
-			echo "$d many-install"
-		else
-			echo "$d install"
-		fi
+		target_of "$f"
 	done | sort -u)
 fi
 
