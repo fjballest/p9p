@@ -3,12 +3,19 @@
 #
 # Merges each pull request given (by number, in the repository of
 # origin, with gh), pulls the branch from origin into $PLAN9 (a git
-# clone; it must be on master with no uncommitted changes to tracked
-# files), and rebuilds and installs what the pulled commits changed:
-#	src/lib*, include	everything (cd src; mk install)
+# clone on master), and rebuilds and installs what the pulled commits
+# changed:
+#	include, src/mk*	everything (cd src; mk -a install)
+#	src/lib*	those libraries, then all commands relinked
+#			(cd src/cmd; mk -k -a install), as mk does not
+#			notice that a library changed
 #	src/.../x.c in a dir	built with mkmany: mk x.install there
 #	any other file in src	mk install in the nearest dir with a mkfile
 # Scripts in bin, man pages, and mac/*.app need no building.
+# Files that only differ from git by INSTALL's path rewrite
+# (/usr/local/plan9 -> $PLAN9, e.g. the #! lines of scripts) are
+# restored before pulling, and the files in lib/moveplan9.files are
+# rewritten again after it; any other local change makes it stop.
 # With -n, it says what it would do, and does nothing.
 
 PLAN9=${PLAN9:-/usr/local/plan9}
@@ -40,7 +47,15 @@ cd "$PLAN9" || die "no $PLAN9"
 git rev-parse --git-dir >/dev/null 2>&1 || die "$PLAN9 is not a git clone"
 br=$(git symbolic-ref --short HEAD 2>/dev/null)
 [ "$br" = master ] || die "$PLAN9 is on ${br:-a detached HEAD}, not master"
-git diff --quiet HEAD -- || die "$PLAN9 has uncommitted changes (git status)"
+# local changes must be just INSTALL's path rewrite
+rewritten=
+for f in $(git diff --name-only HEAD --); do
+	if git show "HEAD:$f" 2>/dev/null | /usr/bin/sed "s,/usr/local/plan9,$PLAN9,g" | /usr/bin/cmp -s - "$f"; then
+		rewritten="$rewritten $f"
+	else
+		die "$f has local changes (git diff $f): commit or undo them"
+	fi
+done
 
 if [ $# -gt 0 ]; then
 	command -v gh >/dev/null || die "gh is needed to merge (brew install gh; gh auth login)"
@@ -51,8 +66,17 @@ if [ $# -gt 0 ]; then
 fi
 
 old=$(git rev-parse HEAD)
-run git pull --ff-only origin master || die "cannot pull"
+[ -n "$rewritten" ] && run git checkout -- $rewritten
+run git pull -q --ff-only origin master || die "cannot pull"
 new=$(git rev-parse HEAD)
+# redo INSTALL's path rewrite, on the files it rewrites
+if [ -z "$n" ] && [ "$PLAN9" != /usr/local/plan9 ]; then
+	for f in $(cat lib/moveplan9.files) $rewritten; do
+		[ -f "$f" ] && grep -q /usr/local/plan9 "$f" || continue
+		/usr/bin/sed "s,/usr/local/plan9,$PLAN9,g" "$f" >"$f.p9u" && cat "$f.p9u" >"$f"
+		rm -f "$f.p9u"
+	done
+fi
 if [ -n "$n" ]; then
 	# what a pull would bring
 	git fetch -q origin master && new=$(git rev-parse FETCH_HEAD)
@@ -73,8 +97,11 @@ mkdir_of() {
 	echo "$d"
 }
 
-if echo "$changed" | grep -Eq '^(include/|src/lib|src/mk)'; then
-	targets='src install'
+if echo "$changed" | grep -Eq '^(include/|src/mk)'; then
+	targets='src -a install'
+elif echo "$changed" | grep -Eq '^src/lib'; then
+	targets=$(echo "$changed" | grep '^src/lib' | cut -d/ -f1-2 | sort -u | sed 's/$/ install/'
+		echo 'src/cmd -k -a install')
 else
 	targets=$(echo "$changed" | grep '^src/' | while read -r f; do
 		d=$(mkdir_of "$f")
@@ -99,7 +126,7 @@ if [ -n "$targets" ]; then
 		while read -r d t; do
 			echo "% cd $d; mk $t"
 			[ -n "$n" ] && continue
-			(cd "$PLAN9/$d" && mk "$t") || { echo "p9update: $d: mk $t failed" >&2; status=1; }
+			(cd "$PLAN9/$d" && mk $t) || { echo "p9update: $d: mk $t failed" >&2; status=1; }
 		done
 		exit $status
 	}
