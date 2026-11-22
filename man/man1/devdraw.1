@@ -33,6 +33,24 @@ which interprets button 8 (shifted button 3) as a reverse search.
 .PP
 Typing Command-F toggles full screen mode.
 .PP
+Programs run the copy of
+.I devdraw
+in
+.BR \*9/mac/Devdraw.app ,
+which
+.B mk
+.B install
+puts there, so that the Dock and Command-Tab keep showing it
+after the Dock restarts.
+If it is not there, or
+.B $DEVDRAW
+is set, they run
+.B $DEVDRAW
+(default
+.BR devdraw )
+from
+.BR $PATH .
+.PP
 .I Devdraw
 automatically detects high-resolution (retina) displays.
 For debugging, typing Command-R toggles retina mode.

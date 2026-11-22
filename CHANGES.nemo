@@ -57,7 +57,15 @@ devdraw (macOS)
 	New and resized windows are at least 64x64, so tiny windows
 	(e.g., a one-line 9menu) no longer leave an empty image.
 
+	mk install also puts devdraw in mac/Devdraw.app, and
+	programs run that copy (see libdraw), so it keeps its
+	Dock icon and its place in Command-Tab when the Dock
+	restarts; an unbundled devdraw vanished from both.
+
 libdraw
+	On macOS, runs mac/Devdraw.app's devdraw if it is there
+	and $DEVDRAW is not set.
+
 	Programs using event(3) exit with status "hangup", not
 	success, when the window is closed.
 

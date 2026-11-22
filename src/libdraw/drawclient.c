@@ -18,6 +18,7 @@ static int	drawnbrecv(Mux *mux, void**);
 static int	drawsend(Mux *mux, void *vmsg);
 static int	drawsettag(Mux *mux, void *vmsg, uint tag);
 static int canreadfd(int);
+static char*	devdrawpath(void);
 
 int
 _displayconnect(Display *d)
@@ -123,7 +124,7 @@ _displayconnect(Display *d)
 		putenv("NOLIBTHREADDAEMONIZE", "1");
 		devdraw = getenv("DEVDRAW");
 		if(devdraw == nil)
-			devdraw = "devdraw";
+			devdraw = devdrawpath();
 		if(argv0 == nil)
 			argv0 = devdraw;
 		execl(devdraw, argv0, argv0, "(devdraw)", nil);
@@ -132,6 +133,24 @@ _displayconnect(Display *d)
 	close(p[1]);
 	d->srvfd = p[0];
 	return 0;
+}
+
+// On macOS, run the copy of devdraw in $PLAN9/mac/Devdraw.app
+// (see the devdraw mkfile), so that the Dock knows its icon: a
+// devdraw without a bundle vanishes from the Dock and from
+// command-tab when the Dock restarts.
+static char*
+devdrawpath(void)
+{
+#ifdef __APPLE__
+	char *p;
+
+	p = smprint("%s/mac/Devdraw.app/Contents/MacOS/devdraw", get9root());
+	if(p != nil && access(p, AEXEC) == 0)
+		return p;
+	free(p);
+#endif
+	return "devdraw";
 }
 
 int

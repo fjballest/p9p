@@ -49,3 +49,12 @@ install:Q:
 	if [ $MACARGV ]; then
 		mk $MKFLAGS macargv.install
 	fi
+	# on macOS, programs run the copy in Devdraw.app (see
+	# libdraw/drawclient.c), so the Dock knows its icon. Move
+	# it in place: rewriting a running binary kills it.
+	a=$PLAN9/mac/Devdraw.app/Contents
+	if [ `uname` = Darwin ] && [ -d $a ]; then
+		mkdir -p $a/MacOS
+		cp $BIN/devdraw $a/MacOS/devdraw.new
+		mv -f $a/MacOS/devdraw.new $a/MacOS/devdraw
+	fi
