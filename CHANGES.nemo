@@ -110,6 +110,13 @@ macme, apdf, aimg (new, prototype)
 	instruction), input files, and output (typing gives input); Pict shows a view as pascdb's page
 	draws it, with a headless Chrome. See macme(1).
 
+9update (new)
+	9update [-n] [pr...] merges the given pull requests (with
+	gh), pulls origin master into $PLAN9, and rebuilds what
+	changed; if a library or header changed, it relinks all
+	commands. Local copies that only differ by INSTALL's path
+	rewrite are restored before pulling and rewritten after.
+
 mac/Acme.app (new)
 	Double-click to choose which acme to start, each with its
 	own font, namespace, dump, plumber, and fontsrv, from
