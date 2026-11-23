@@ -9,7 +9,7 @@
 # the like there, and menufont for the font used by the menus.
 # The menu can also create a new acme (asking for its name and
 # font) or remove one (it goes to $home/lib/acmeapp/.removed).
-
+LANG=en_US.UTF-8
 ifs='
 '
 app=$1
