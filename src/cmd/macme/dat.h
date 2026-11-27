@@ -244,6 +244,7 @@ struct Window
 	char	*imgbuf;	// image being written
 	long	nimgbuf;
 	uchar	pagekeys;	// send page keys to the client
+	uchar	sweeps;	// B1 can sweep a rectangle on the image
 	Rectangle	r;
 	uchar	isdir;
 	uchar	isscratch;

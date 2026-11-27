@@ -102,10 +102,14 @@ macme, apdf, aimg (new, prototype)
 	write an image(6) to /mnt/acme/N/image; clicks on it
 	come as MI events (buttons in the text). Reading the image file gives the panel
 	and image sizes, and the ctl message pagekeys sends PgUp,
-	PgDn, Home and End to the client. apdf shows PDF pages
+	PgDn, Home and End to the client, and sweeps lets B1
+	sweep rectangles on the image. apdf shows PDF pages
 	(Next, Prev, PgUp, PgDn, Home, End, Zoom+, Zoom-, and
 	Zoom! to fit the window; pages start fit to the window,
-	and gs pages are antialiased), aimg shows image files (Zoom+,
+	and gs pages are antialiased; clicks follow links, or
+	go to the previous (B1) or next (B3) page; sweeping with
+	B1 snarfs the text in the rectangle, and Text shows the
+	page text), aimg shows image files (Zoom+,
 	Zoom-, Zoom!), and aweb shows web pages rendered by a
 	headless Chrome (clicks follow links; Links, Back,
 	Reload, More, Zoom+, Zoom-, and Login to log in to a site

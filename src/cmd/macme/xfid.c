@@ -702,6 +702,10 @@ xfidctlwrite(Xfid *x, Window *w)
 			w->pagekeys = TRUE;
 			m = 8;
 		}else
+		if(strncmp(p, "sweeps", 6) == 0){	// macme: B1 sweeps rectangles
+			w->sweeps = TRUE;
+			m = 6;
+		}else
 		if(strncmp(p, "place ", 6) == 0){	// macme: move to column n at percent
 			pp = p+6;
 			m = 6;

@@ -81,6 +81,17 @@ events, as if
 or
 .B end
 had been executed, instead of scrolling.
+The ctl message
+.B sweeps
+lets button 1 sweep a rectangle on the image
+(drawn while it is swept), sent as
+.IP
+.EX
+MI\fIx0 y0\fP 0 \fIn\fP 1 \fIx1 y1\fP
+.EE
+.PP
+with the corners in the image; a click without moving
+is sent as usual.
 .PP
 The ctl message
 .B place
@@ -142,6 +153,15 @@ gives the best pages; on macOS,
 Unless
 .B -r
 gives the resolution, the page is fit to the window.
+Clicking on a link goes to its page, or plumbs it if it
+is not a page of the document (this needs
+.IR mutool );
+clicking elsewhere with button 1 goes to the previous page,
+and with button 3 to the next.
+Sweeping a rectangle with button 1 puts the text in it
+in the snarf buffer, and
+.B Text
+shows the text of the page in a new window.
 .B Next
 and
 .B Prev

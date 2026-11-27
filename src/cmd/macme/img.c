@@ -6,7 +6,8 @@
  * event file as "MI x y 0 1 b" (x and y in the image, b the buttons).
  * The ctl message noimage goes back to text, and pagekeys
  * makes PgUp, PgDn, Home and End come as "KX" events for
- * pgup, pgdown, home and end instead of scrolling.
+ * pgup, pgdown, home and end instead of scrolling, and sweeps
+ * lets B1 sweep a rectangle, sent as "MI x0 y0 0 n 1 x1 y1".
  * Reading the image file gives the size of the panel and of
  * the image, to fit the image to the panel.
  * nemo
@@ -113,6 +114,42 @@ imgscroll(Window *w, int dy)
 		imgdraw(w);
 }
 
+// sweep a rectangle with B1, from the screen point p, within r.
+// Returns 0 if the mouse did not move (a click).
+static int
+imgsweep(Window *w, Point p, Rectangle r, Rectangle *sr)
+{
+	Point q;
+	int moved;
+
+	moved = 0;
+	while(mousectl->m.buttons & 1){
+		readmouse(mousectl);
+		q = mousectl->m.xy;
+		if(q.x < r.min.x)
+			q.x = r.min.x;
+		if(q.x >= r.max.x)
+			q.x = r.max.x-1;
+		if(q.y < r.min.y)
+			q.y = r.min.y;
+		if(q.y >= r.max.y)
+			q.y = r.max.y-1;
+		if(abs(q.x-p.x) > 3 || abs(q.y-p.y) > 3)
+			moved = 1;
+		if(moved){
+			*sr = canonrect(Rpt(p, q));
+			imgdraw(w);
+			border(screen, *sr, -1, w->body.fr.cols[TEXT], ZP);
+			flushimage(display, 1);
+		}
+	}
+	if(moved){
+		imgdraw(w);
+		flushimage(display, 1);
+	}
+	return moved;
+}
+
 static void
 waitup(void)
 {
@@ -126,6 +163,7 @@ imgmouse(Window *w, Mouse *m)
 	Rectangle r, s;
 	Point p;
 	int n, h;
+	char buf[64];
 
 	h = w->body.fr.font->height;
 	if((m->buttons & (8|16)) == (8|16)){
@@ -169,6 +207,17 @@ imgmouse(Window *w, Mouse *m)
 		return;
 	activewin = w;
 	p = addpt(addpt(subpt(m->xy, r.min), w->imgoff), w->img->r.min);
+	if(w->sweeps && (m->buttons & 7) == 1){
+		if(imgsweep(w, m->xy, r, &s)){
+			s = rectaddpt(rectsubpt(s, r.min), addpt(w->imgoff, w->img->r.min));
+			snprint(buf, sizeof buf, "1 %d %d", s.max.x, s.max.y);
+			winevent(w, "I%d %d 0 %d %s\n", s.min.x, s.min.y, utflen(buf), buf);
+			return;
+		}
+		winevent(w, "I%d %d 0 1 1\n", p.x, p.y);
+		waitup();
+		return;
+	}
 	// the buttons go in the text: in the flag, 2 would mean
 	// an expansion follows (see acme(4))
 	winevent(w, "I%d %d 0 1 %d\n", p.x, p.y, m->buttons & 7);
@@ -282,6 +331,7 @@ imgfree(Window *w)
 	w->imgbuf = nil;
 	w->nimgbuf = 0;
 	w->pagekeys = FALSE;
+	w->sweeps = FALSE;
 }
 
 // panel and image sizes, for the image file

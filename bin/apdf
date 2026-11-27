@@ -6,6 +6,10 @@
 # Pages are rendered with mutool, pdftoppm, or gs, whichever is
 # found first (mutool looks best: brew install mupdf-tools).
 # Without -r, the first page shown is fit to the window.
+# A click on a link follows it (plumbing it if it is not a page of
+# the document; needs mutool); elsewhere, B1 goes to the previous
+# page and B3 to the next. Sweeping with B1 snarfs the text in the
+# rectangle, and Text shows the text of the page in a window.
 . $PLAN9/lib/acme.rc
 ifs=' 	
 '
@@ -83,6 +87,7 @@ fn render {
 		rm -f $tmp.png $tmp.err
 		# so Dump and Load bring the window back as it is
 		winctl dump apdf -r $res $f $page
+		links
 		status=''
 	}
 }
@@ -94,6 +99,127 @@ fn zoomfit {
 		res=$r
 		render
 	}
+}
+
+# links in $page, as "x0 y0 x1 y1 target" in points (see apdflinks.js)
+fn links {
+	rm -f $tmp.links
+	if(has mutool)
+		mutool run $PLAN9/lib/apdflinks.js $f $page >$tmp.links >[2]/dev/null
+}
+
+# the link at $1 $2 (pixels at $res), if any
+fn linkat {
+	if(test -s $tmp.links)
+		awk -v 'x='$1 -v 'y='$2 -v 'r='$res '
+		BEGIN { x = x*72/r; y = y*72/r }
+		$1 <= x && x <= $3 && $2 <= y && y <= $4 { print $5; exit }
+		' $tmp.links
+}
+
+fn follow {
+	switch($1){
+	case '#'*
+		p=`{echo $1 | sed 's/^#//'}
+		if(! ~ $p $page){
+			o=$page
+			page=$p
+			if(! render)
+				page=$o
+		}
+	case *
+		plumb $1
+	}
+}
+
+# put stdin in the snarf buffer
+fn snarf {
+	if(has pbcopy)
+		pbcopy
+	if not if(has xclip)
+		xclip -selection clipboard
+	if not if(has xsel)
+		xsel -b -i
+	if not
+		cat >/dev/null
+}
+
+# the characters in $page, as "x y c" (points, y the baseline
+# from the top), from mutool or gs
+fn chars {
+	if(has mutool)
+		mutool draw -q -F stext -o - $f $page >[2]/dev/null
+	if not if(has gs)
+		gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='txtwrite -dTextFormat'='0 \
+			-dFirstPage'='$page -dLastPage'='$page -o - $f >[2]/dev/null
+}
+
+# the text in the rectangle $1 $2 $3 $4 (pixels at $res)
+fn textin {
+	if(! has mutool && has pdftotext){
+		pdftotext -q -f $page -l $page -r $res -x $1 -y $2 \
+			-W `{expr $3 - $1} -H `{expr $4 - $2} $f -
+	}
+	if not chars | awk -v 'x0='$1 -v 'y0='$2 -v 'x1='$3 -v 'y1='$4 -v 'r='$res '
+	# other characters come as UTF-8
+	function ascii(n) {
+		return (n >= 32 && n < 127) ? sprintf("%c", n) : ""
+	}
+	function hex(s,   i, n) {
+		n = 0
+		for(i = 1; i <= length(s); i++)
+			n = n*16 + index("0123456789abcdef", tolower(substr(s, i, 1))) - 1
+		return n
+	}
+	function attr(a,   v) {
+		if(!match($0, " " a "=\"[^\"]*\""))
+			return ""
+		return substr($0, RSTART+length(a)+3, RLENGTH-length(a)-4)
+	}
+	BEGIN { x0 = x0*72/r; y0 = y0*72/r; x1 = x1*72/r; y1 = y1*72/r }
+	/<char / {
+		c = attr("c")
+		if((v = attr("x")) != ""){	# mutool
+			x = v+0; y = attr("y")+0
+		}else{	# gs: bbox="x0 y x1 y"
+			split(attr("bbox"), b, " ")
+			x = b[1]+0; y = b[2]+0
+		}
+		# the middle of the glyph, about
+		if(x < x0 || x > x1 || y-4 < y0 || y-4 > y1)
+			next
+		while(match(c, /&#x[0-9a-fA-F]+;/))
+			c = substr(c, 1, RSTART-1) ascii(hex(substr(c, RSTART+3, RLENGTH-4))) substr(c, RSTART+RLENGTH)
+		while(match(c, /&#[0-9]+;/))
+			c = substr(c, 1, RSTART-1) ascii(substr(c, RSTART+2, RLENGTH-3)+0) substr(c, RSTART+RLENGTH)
+		gsub(/&lt;/, "<", c); gsub(/&gt;/, ">", c); gsub(/&quot;/, "\"", c)
+		gsub(/&apos;/, "\047", c); gsub(/&amp;/, "\\&", c)
+		if(n > 0 && (y > ly+2 || y < ly-2))
+			printf "\n"
+		printf "%s", c
+		n++; ly = y
+	}
+	END { if(n > 0) printf "\n" }'
+}
+
+# the text of $page, in a new window
+fn showtext {
+	{
+		if(has mutool)
+			mutool draw -q -F txt -o - $f $page
+		if not if(has pdftotext)
+			pdftotext -q -layout -f $page -l $page $f -
+		if not if(has gs)
+			gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='txtwrite \
+				-dFirstPage'='$page -dLastPage'='$page -o - $f
+	} >$tmp.txt >[2]/dev/null
+	id=$winid
+	newwindow
+	winname $f^':'^$page^'+text'
+	winwrite body <$tmp.txt
+	winctl clean
+	winid=$id
+	rm -f $tmp.txt
 }
 
 fn event {
@@ -130,11 +256,34 @@ fn event {
 			}
 		case Zoom!
 			zoomfit
+		case Text
+			showtext
 		case *
 			winwriteevent $*
 		}
 	case I
-		;	# a click on the page
+		# $9 is the buttons, or "1 x1 y1" for a B1 sweep
+		# from $3 $4
+		b=`{echo $9}
+		if(~ $#b 3){
+			textin $3 $4 $b(2) $b(3) | snarf
+		}
+		if not{
+			l=`{linkat $3 $4}
+			if(! ~ $#l 0)
+				follow $l
+			if not if(~ $b 1){
+				if(! ~ $page 1){
+					page=`{expr $page - 1}
+					render
+				}
+			}
+			if not if(~ $b 4){
+				page=`{expr $page + 1}
+				if(! render)
+					page=`{expr $page - 1}
+			}
+		}
 	case *
 		winwriteevent $*
 	}
@@ -144,7 +293,8 @@ newwindow
 winname $f
 winctl dumpdir /
 winctl pagekeys
-echo -n ' Next Prev Zoom+ Zoom- Zoom! ' | winwrite tag
+winctl sweeps
+echo -n ' Next Prev Zoom+ Zoom- Zoom! Text ' | winwrite tag
 winctl clean
 if(! render){
 	echo apdf: $f: no page $page >[1=2]
@@ -157,4 +307,4 @@ if(~ $fitit yes)
 	zoomfit
 wineventloop
 
-rm -f $tmp.err
+rm -f $tmp.err $tmp.links
