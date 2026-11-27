@@ -133,9 +133,15 @@ using
 .IR pdftoppm ,
 or
 .IR gs ,
-whichever is found, and
+whichever is found first, and
 .IR png (1)
-to make the image.
+to make the image
+.RI ( mutool
+gives the best pages; on macOS,
+.BR "brew install mupdf-tools" ).
+Unless
+.B -r
+gives the resolution, the page is fit to the window.
 .B Next
 and
 .B Prev

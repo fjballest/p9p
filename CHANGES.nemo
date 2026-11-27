@@ -104,7 +104,8 @@ macme, apdf, aimg (new, prototype)
 	and image sizes, and the ctl message pagekeys sends PgUp,
 	PgDn, Home and End to the client. apdf shows PDF pages
 	(Next, Prev, PgUp, PgDn, Home, End, Zoom+, Zoom-, and
-	Zoom! to fit the window), aimg shows image files (Zoom+,
+	Zoom! to fit the window; pages start fit to the window,
+	and gs pages are antialiased), aimg shows image files (Zoom+,
 	Zoom-, Zoom!), and aweb shows web pages rendered by a
 	headless Chrome (clicks follow links; Links, Back,
 	Reload, More, Zoom+, Zoom-, and Login to log in to a site

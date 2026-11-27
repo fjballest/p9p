@@ -3,15 +3,19 @@
 # Next and Prev in the tag (or PgDn and PgUp, Home and End) move
 # through the pages; Zoom+ and Zoom- scale them, and Zoom! fits the
 # page to the window.
-# Pages are rendered with mutool, pdftoppm, or gs, whichever is found.
+# Pages are rendered with mutool, pdftoppm, or gs, whichever is
+# found first (mutool looks best: brew install mupdf-tools).
+# Without -r, the first page shown is fit to the window.
 . $PLAN9/lib/acme.rc
 ifs=' 	
 '
 path=($path /opt/local/bin /opt/homebrew/bin /usr/local/bin)
 
 res=100
+fitit=yes
 if(~ $1 -r){
 	res=$2
+	fitit=()
 	shift 2
 }
 if(! ~ $#* 1 2){
@@ -68,6 +72,7 @@ fn render {
 		pdftoppm -f $page -l $page -r $res -png -singlefile $f $tmp >>[2]$tmp.err
 	if(! test -s $tmp.png && has gs)
 		gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE'='png16m -r$res \
+			-dTextAlphaBits'='4 -dGraphicsAlphaBits'='4 \
 			-dFirstPage'='$page -dLastPage'='$page -sOutputFile'='$tmp.png $f >>[2]$tmp.err
 	if(! test -s $tmp.png){
 		rm -f $tmp.png
@@ -79,6 +84,15 @@ fn render {
 		# so Dump and Load bring the window back as it is
 		winctl dump apdf -r $res $f $page
 		status=''
+	}
+}
+
+# render again at the resolution that fits the page in the window
+fn zoomfit {
+	r=`{fit | awk '{r = int('$res' * $1); print (r < 10) ? 10 : r}'}
+	if(! ~ $r $res){
+		res=$r
+		render
 	}
 }
 
@@ -115,11 +129,7 @@ fn event {
 				render
 			}
 		case Zoom!
-			r=`{fit | awk '{r = int('$res' * $1); print (r < 10) ? 10 : r}'}
-			if(! ~ $r $res){
-				res=$r
-				render
-			}
+			zoomfit
 		case *
 			winwriteevent $*
 		}
@@ -143,6 +153,8 @@ if(! render){
 	windel sure
 	exit nopage
 }
+if(~ $fitit yes)
+	zoomfit
 wineventloop
 
 rm -f $tmp.err
